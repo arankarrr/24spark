@@ -39,6 +39,13 @@ input:focus{border-color:#3b82f6}
 .node-name{font-weight:600;font-size:.88rem;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .node-host{font-size:.74rem;color:#64748b;margin-top:2px}
 .badge{font-size:.68rem;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;white-space:nowrap;flex-shrink:0}
+.node-badges{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.badge.ping-good{background:#123524;color:#4ade80}.badge.ping-mid{background:#3b2f12;color:#facc15}.badge.ping-bad{background:#3f1d24;color:#f87171}
+.health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.health-item{background:#0f1117;border:1px solid #2d3047;border-radius:8px;padding:9px;text-align:center}
+.health-name{font-size:.68rem;color:#64748b;margin-bottom:4px}.health-value{font-size:.78rem;font-weight:600}
+.health-value.ok{color:#4ade80}.health-value.bad{color:#f87171}.health-value.wait{color:#f59e0b}
+.hint{font-size:.72rem;color:#64748b;margin-top:9px}
 .log-box{background:#090b10;border-radius:8px;padding:12px;font-family:monospace;font-size:.72rem;line-height:1.55;max-height:260px;overflow-y:auto;color:#94a3b8;white-space:pre-wrap;word-break:break-all}
 .msg{font-size:.78rem;min-height:1.2em;margin-top:8px}
 .msg.ok{color:#22c55e}.msg.err{color:#f87171}.msg.info{color:#94a3b8}
@@ -61,6 +68,13 @@ input:focus{border-color:#3b82f6}
       <button class="btn btn-red"   id="btn-stop"  onclick="sbAction('stop')"  disabled>&#x25A0; Стоп</button>
       <button class="btn btn-gray"  onclick="refreshStatus()">&#x21BB;</button>
     </div>
+    <div class="health-grid">
+      <div class="health-item"><div class="health-name">Интернет</div><div class="health-value wait" id="health-internet">...</div></div>
+      <div class="health-item"><div class="health-name">DNS</div><div class="health-value wait" id="health-dns">...</div></div>
+      <div class="health-item"><div class="health-name">sing-box</div><div class="health-value wait" id="health-singbox">...</div></div>
+      <div class="health-item"><div class="health-name">TProxy</div><div class="health-value wait" id="health-tproxy">...</div></div>
+    </div>
+    <div class="hint" id="health-hint">Проверка состояния...</div>
   </div>
 
   <!-- SUBSCRIPTIONS -->
@@ -71,11 +85,20 @@ input:focus{border-color:#3b82f6}
       <input class="flex1" type="url" id="sub-input" placeholder="https://..." />
       <button class="btn btn-blue" onclick="addSub()">Добавить</button>
     </div>
-    <button class="btn btn-gray" onclick="loadNodes()" style="margin-bottom:10px">&#x21BB; Загрузить ноды</button>
+    <button class="btn btn-gray" id="btn-refresh-nodes" onclick="loadNodes(true)" style="margin-bottom:10px">&#x21BB; Обновить подписку и пинг</button>
     <div id="nodes-list" class="node-list">
       <div class="empty">Загрузка нод...</div>
     </div>
     <div class="msg info" id="sub-msg"></div>
+  </div>
+
+  <!-- UPDATE -->
+  <div class="card">
+    <div class="card-title">Обновление 24spark</div>
+    <div class="row">
+      <button class="btn btn-blue" id="btn-update" onclick="update24spark()">Обновить из GitHub</button>
+      <span class="msg info" id="update-msg"></span>
+    </div>
   </div>
 
   <!-- LOG -->
@@ -126,6 +149,13 @@ async function refreshStatus() {
   txt.textContent = d.running ? 'Работает (PID '+d.pid+')' : 'Остановлен';
   document.getElementById('btn-start').disabled = !!d.running;
   document.getElementById('btn-stop').disabled  = !d.running;
+  setHealth('health-internet', d.internet);
+  setHealth('health-dns', d.dns);
+  setHealth('health-singbox', d.running);
+  setHealth('health-tproxy', d.tproxy);
+  const checked = d.last_check ? new Date(d.last_check*1000).toLocaleTimeString() : 'ожидание';
+  const ping = d.latency != null ? ' · активная нода '+d.latency+' мс' : '';
+  document.getElementById('health-hint').textContent = 'Последняя проверка: '+checked+ping+' · подписка обновляется каждый час';
   if (!d.running && !manualStop && !autoStarting && Date.now()-lastAutoStart > 30000) {
     autoStarting = true;
     lastAutoStart = Date.now();
@@ -136,6 +166,12 @@ async function refreshStatus() {
     autoStarting = false;
     return refreshStatus();
   }
+}
+
+function setHealth(id, ok) {
+  const el=document.getElementById(id);
+  el.textContent=ok?'OK':'Ошибка';
+  el.className='health-value '+(ok?'ok':'bad');
 }
 
 async function sbAction(act) {
@@ -172,7 +208,7 @@ async function addSub() {
     document.getElementById('sub-input').value = '';
     await loadSubs();
     msg('Добавлено! Загружаю ноды...', 'ok');
-    await loadNodes();
+    await loadNodes(true);
   } else {
     msg('Ошибка: '+(d.error||'unknown'), 'err');
   }
@@ -184,30 +220,43 @@ async function delSub(url) {
   else msg('Ошибка: '+(d.error||'unknown'), 'err');
 }
 
-async function loadNodes() {
-  msg('Загружаю ноды из всех подписок...', 'info');
+async function loadNodes(force) {
+  msg(force?'Обновляю подписку и измеряю задержку...':'Загружаю сохранённые ноды...', 'info');
   document.getElementById('nodes-list').innerHTML = '<div class="empty">Загрузка...</div>';
-  const d = await api('nodes', '');
+  const button=document.getElementById('btn-refresh-nodes');
+  button.disabled=true;
+  const d = await api(force?'refreshnodes':'nodes', '');
+  button.disabled=false;
   const list = document.getElementById('nodes-list');
   if (d.error) { list.innerHTML='<div class="empty">'+esc(d.error)+'</div>'; msg('','info'); return; }
   if (!d.nodes || d.nodes.length===0) {
     list.innerHTML='<div class="empty">Нод не найдено</div>'; msg('','info'); return;
   }
   list.innerHTML = d.nodes.map((n,i) =>
-    '<div class="node'+(n.active?' active':'')+'" onclick="applyNode(\''+esc(n.raw)+'\',\''+esc(decodeLabel(n.label))+'\')">'+
+    '<div class="node'+(n.active?' active':'')+'" onclick="applyNode(this,\''+esc(n.raw)+'\',\''+esc(decodeLabel(n.label))+'\')">'+
       '<div class="flex1" style="min-width:0">'+
         '<div class="node-name">'+esc(decodeLabel(n.label)||'Нода '+(i+1))+'</div>'+
         '<div class="node-host">'+esc(n.host)+':'+esc(n.port)+'</div>'+
       '</div>'+
-      '<span class="badge">'+(n.active?'АКТИВНА':'VLESS')+'</span>'+
+      '<div class="node-badges">'+
+        '<span class="badge '+pingClass(n.latency)+'">'+(n.latency==null?'нет связи':n.latency+' мс')+'</span>'+
+        '<span class="badge">'+(n.active?'АКТИВНА':'VLESS')+'</span>'+
+      '</div>'+
     '</div>'
   ).join('');
   msg('Найдено нод: '+d.nodes.length, 'ok');
 }
 
-async function applyNode(raw, label) {
+function pingClass(ms) {
+  if (ms==null) return 'ping-bad';
+  if (ms<120) return 'ping-good';
+  if (ms<250) return 'ping-mid';
+  return 'ping-bad';
+}
+
+async function applyNode(element, raw, label) {
   document.querySelectorAll('.node').forEach(n=>n.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  element.classList.add('active');
   msg('Применяю: '+label+'...', 'info');
   const d = await api('setnode', 'raw='+encodeURIComponent(raw));
   if (d.ok) {
@@ -217,6 +266,21 @@ async function applyNode(raw, label) {
   } else {
     msg('Ошибка: '+(d.error||'unknown'), 'err');
   }
+}
+
+async function update24spark() {
+  const button=document.getElementById('btn-update');
+  const out=document.getElementById('update-msg');
+  button.disabled=true; out.textContent='Обновление запущено...'; out.className='msg info';
+  const d=await api('update','');
+  if (!d.ok) { out.textContent='Ошибка: '+(d.error||'unknown'); out.className='msg err'; button.disabled=false; return; }
+  for (let i=0;i<40;i++) {
+    await new Promise(r=>setTimeout(r,3000));
+    const s=await api('updatestatus');
+    if (s.state==='success') { out.textContent='Обновлено. Перезагружаю страницу...'; out.className='msg ok'; setTimeout(()=>location.reload(),1500); return; }
+    if (s.state==='error') { out.textContent='Ошибка обновления. Смотрите лог.'; out.className='msg err'; button.disabled=false; return; }
+  }
+  out.textContent='Обновление продолжается в фоне'; button.disabled=false;
 }
 
 async function loadLog() {

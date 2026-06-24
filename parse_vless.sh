@@ -81,10 +81,11 @@ cat <<EOF
     "final": "remote",
     "independent_cache": true
   },
-  "inbounds": [{
-    "type": "tproxy", "tag": "tproxy-in", "listen": "::", "listen_port": 7895,
-    "tcp_fast_open": true, "udp_fragment": true, "sniff": true
-  }],
+  "inbounds": [
+    {"type": "tproxy", "tag": "tproxy-in", "listen": "::", "listen_port": 7895,
+     "tcp_fast_open": true, "udp_fragment": true, "sniff": true},
+    {"type": "mixed", "tag": "health-in", "listen": "127.0.0.1", "listen_port": 2080}
+  ],
   "outbounds": [
     {"type": "vless", "tag": "proxy", "server": "$HOST", "server_port": $PORT,
      "uuid": "$UUID", $FLOW_LINE

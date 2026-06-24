@@ -1,0 +1,16 @@
+config.json
+*.bak
+*.bak-*
+*.url
+subscriptions.txt
+__pycache__/
+/24spark-github/
+
+# Old local experiments, not part of the installer
+sb.cgi
+sb2.cgi
+sb4.cgi
+sb_new.sh
+parse_vless.py
+parse_vless_new.sh
+singbox2.html

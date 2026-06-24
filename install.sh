@@ -83,7 +83,8 @@ tar -xzf "$ARCHIVE" -C "$STAGE" || die 'cannot extract repository archive'
 PAYLOAD="$STAGE/${REPOSITORY##*/}-$REF"
 [ -d "$PAYLOAD" ] || die 'unexpected repository archive layout'
 
-for file in sb3.cgi singbox.html parse_vless.sh parse_subscription.sh sing-box.init \
+for file in sb3.cgi singbox.html parse_vless.sh parse_subscription.sh sing-box.init 24spark.init \
+            24spark-manager.sh \
             tproxy-setup.sh config.default.json luci-app-singbox.json luci-singbox.js; do
     [ -s "$PAYLOAD/$file" ] || die "missing archive file: $file"
 done
@@ -94,6 +95,8 @@ sh -n "$PAYLOAD/sb3.cgi"
 sh -n "$PAYLOAD/parse_vless.sh"
 sh -n "$PAYLOAD/parse_subscription.sh"
 sh -n "$PAYLOAD/sing-box.init"
+sh -n "$PAYLOAD/24spark.init"
+sh -n "$PAYLOAD/24spark-manager.sh"
 sh -n "$PAYLOAD/tproxy-setup.sh"
 
 mkdir -p "$BACKUP" /etc/sing-box /www/cgi-bin
@@ -110,8 +113,10 @@ for target in \
     /etc/sing-box/config.json \
     /etc/sing-box/parse_vless.sh \
     /etc/sing-box/parse_subscription.sh \
+    /etc/sing-box/24spark-manager.sh \
     /etc/sing-box/tproxy-setup.sh \
     /etc/init.d/sing-box \
+    /etc/init.d/24spark \
     /usr/share/luci/menu.d/luci-app-singbox.json \
     /www/luci-static/resources/view/singbox.js; do
     backup_file "$target"
@@ -126,8 +131,10 @@ put_file "$PAYLOAD/sb3.cgi" /www/cgi-bin/sb 755
 put_file "$PAYLOAD/singbox.html" /www/singbox.html 644
 put_file "$PAYLOAD/parse_vless.sh" /etc/sing-box/parse_vless.sh 755
 put_file "$PAYLOAD/parse_subscription.sh" /etc/sing-box/parse_subscription.sh 755
+put_file "$PAYLOAD/24spark-manager.sh" /etc/sing-box/24spark-manager.sh 755
 put_file "$PAYLOAD/tproxy-setup.sh" /etc/sing-box/tproxy-setup.sh 755
 put_file "$PAYLOAD/sing-box.init" /etc/init.d/sing-box 755
+put_file "$PAYLOAD/24spark.init" /etc/init.d/24spark 755
 
 if [ -d /usr/share/luci/menu.d ] && [ -d /www/luci-static/resources/view ]; then
     put_file "$PAYLOAD/luci-app-singbox.json" /usr/share/luci/menu.d/luci-app-singbox.json 644
@@ -169,6 +176,13 @@ if /etc/init.d/sing-box running 2>/dev/null; then
     /etc/init.d/sing-box restart
 else
     /etc/init.d/sing-box start
+fi
+
+/etc/init.d/24spark enable
+if /etc/init.d/24spark running 2>/dev/null; then
+    /etc/init.d/24spark restart
+else
+    /etc/init.d/24spark start
 fi
 
 say 'installation complete'

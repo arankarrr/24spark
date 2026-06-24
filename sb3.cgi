@@ -17,6 +17,10 @@ CFG=/etc/sing-box/config.json
 LOG=/var/log/sing-box.log
 HWID_FILE=/etc/sing-box/happ.hwid
 ACTIVE_FILE=/etc/sing-box/active_node.url
+NODES_FILE=/etc/sing-box/nodes.cache
+LATENCY_FILE=/tmp/24spark-latency.tsv
+HEALTH_FILE=/tmp/24spark-health
+MANAGER=/etc/sing-box/24spark-manager.sh
 
 url_decode() {
     printf '%s\n' "$1" | sed 's/+/ /g' | awk '{
@@ -74,11 +78,37 @@ fetch_vless() {
     printf '%s' "$RAW" | /etc/sing-box/parse_subscription.sh 2>/dev/null
 }
 
+health_value() {
+    sed -n "s/^$1=//p" "$HEALTH_FILE" 2>/dev/null | head -1
+}
+
+render_nodes() {
+    ACTIVE=$(cat "$ACTIVE_FILE" 2>/dev/null | tr -d '\r\n')
+    [ -s "$LATENCY_FILE" ] || { printf '{"nodes":[]}\n'; return; }
+    JSON=$(awk -F '\t' -v active="$ACTIVE" 'BEGIN{printf "[";i=0}
+      NF>=2 {ms=$1; line=$0; sub(/^[^\t]*\t/,"",line); i++; is_active=(line==active?"true":"false");
+        n=split(line,a,"#"); lbl=(n>1)?a[n]:"Node"i; gsub(/"/,"",lbl);
+        h=line; sub(/vless:\/\/[^@]*@/,"",h); split(h,hp,":"); host=hp[1];
+        p=h; sub(/[^:]*:/,"",p); split(p,pp,"?"); port=pp[1]; raw=line;
+        gsub(/\\/,"\\\\",raw); gsub(/"/,"\\\"",raw);
+        if(i>1)printf ",";
+        printf "{\"idx\":%d,\"label\":\"%s\",\"country\":\"%s\",\"host\":\"%s\",\"port\":\"%s\",\"raw\":\"%s\",\"latency\":%s,\"active\":%s}",i,lbl,lbl,host,port,raw,(ms<999999?ms:"null"),is_active
+      } END{printf "]"}' "$LATENCY_FILE")
+    printf '{"nodes":%s}\n' "$JSON"
+}
+
 case "$ACTION" in
 status)
     PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
     [ -n "$PID" ] && R=true || R=false
-    printf '{"running":%s,"pid":"%s"}\n' "$R" "${PID:-}"
+    INTERNET=$(health_value internet); DNS=$(health_value dns); TPROXY=$(health_value tproxy)
+    [ "$INTERNET" = 1 ] && INTERNET=true || INTERNET=false
+    [ "$DNS" = 1 ] && DNS=true || DNS=false
+    [ "$TPROXY" = 1 ] && TPROXY=true || TPROXY=false
+    LATENCY=$(health_value active_latency); [ "${LATENCY:-999999}" -lt 999999 ] 2>/dev/null || LATENCY=null
+    LAST_REFRESH=$(health_value last_refresh); LAST_CHECK=$(health_value last_check)
+    printf '{"running":%s,"pid":"%s","internet":%s,"dns":%s,"tproxy":%s,"latency":%s,"last_refresh":%s,"last_check":%s}\n' \
+        "$R" "${PID:-}" "$INTERNET" "$DNS" "$TPROXY" "$LATENCY" "${LAST_REFRESH:-0}" "${LAST_CHECK:-0}"
     ;;
 
 log)
@@ -87,12 +117,14 @@ log)
     ;;
 
 start)
+    rm -f /tmp/24spark-paused
     /etc/init.d/sing-box start 2>/dev/null; sleep 1
     PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
     printf '{"ok":true,"pid":"%s"}\n' "${PID:-}"
     ;;
 
 stop)
+    touch /tmp/24spark-paused
     /etc/init.d/sing-box stop 2>/dev/null
     printf '{"ok":true}\n'
     ;;
@@ -125,28 +157,18 @@ delsub)
     ;;
 
 nodes)
-    SUBS=$(cat "$SUBS_FILE" 2>/dev/null | grep -v '^[[:space:]]*$')
-    [ -z "$SUBS" ] && printf '{"nodes":[]}\n' && exit
-    ALL=$(echo "$SUBS" | while IFS= read -r U; do
-        [ -z "$U" ] && continue
-        fetch_vless "$U"
-    done | grep '^vless://' | grep -v '@0\.0\.0\.0:')
-    [ -z "$ALL" ] && printf '{"nodes":[]}\n' && exit
-    if [ ! -s "$ACTIVE_FILE" ]; then
-        CFG_HOST=$(jsonfilter -q -i "$CFG" -e '$.outbounds[0].server' 2>/dev/null)
-        CFG_PORT=$(jsonfilter -q -i "$CFG" -e '$.outbounds[0].server_port' 2>/dev/null)
-        CFG_UUID=$(jsonfilter -q -i "$CFG" -e '$.outbounds[0].uuid' 2>/dev/null)
-        if [ -n "$CFG_HOST" ] && [ -n "$CFG_PORT" ] && [ -n "$CFG_UUID" ]; then
-            DETECTED=$(printf '%s\n' "$ALL" | grep -F "vless://$CFG_UUID@$CFG_HOST:$CFG_PORT?" | head -1)
-            if [ -n "$DETECTED" ]; then
-                umask 077
-                printf '%s\n' "$DETECTED" > "$ACTIVE_FILE"
-            fi
-        fi
+    [ -s "$NODES_FILE" ] || "$MANAGER" refresh >/dev/null 2>&1
+    [ -s "$LATENCY_FILE" ] || "$MANAGER" benchmark >/dev/null 2>&1
+    render_nodes
+    ;;
+
+refreshnodes)
+    if "$MANAGER" refresh >/dev/null 2>&1; then
+        "$MANAGER" benchmark >/dev/null 2>&1
+        render_nodes
+    else
+        printf '{"nodes":[],"error":"subscription refresh failed"}\n'
     fi
-    ACTIVE=$(cat "$ACTIVE_FILE" 2>/dev/null | tr -d '\r\n')
-    JSON=$(printf '%s\n' "$ALL" | awk -v active="$ACTIVE" 'BEGIN{printf "[";i=0}{i++;line=$0;is_active=(line==active?"true":"false");if(i>1)printf ",";n=split(line,a,"#");lbl=(n>1)?a[n]:"Node"i;gsub(/"/,"",lbl);h=line;sub(/vless:\/\/[^@]*@/,"",h);split(h,hp,":");host=hp[1];p=h;sub(/[^:]*:/,"",p);split(p,pp,"?");port=pp[1];raw=line;gsub(/"/,"\\\"",raw);printf "{\"idx\":%d,\"label\":\"%s\",\"host\":\"%s\",\"port\":\"%s\",\"raw\":\"%s\",\"active\":%s}",i,lbl,host,port,raw,is_active}END{printf "]"}')
-    printf '{"nodes":%s}\n' "$JSON"
     ;;
 
 setnode)
@@ -154,33 +176,40 @@ setnode)
     [ -z "$RAW" ] && printf '{"ok":false,"error":"empty raw"}\n' && exit
     VLESS=$(url_decode "$RAW")
     [ -z "$VLESS" ] && printf '{"ok":false,"error":"empty vless"}\n' && exit
-    TMP_CFG="$CFG.new.$$"
-    rm -f "$TMP_CFG"
-    /etc/sing-box/parse_vless.sh "$VLESS" > "$TMP_CFG" 2>/tmp/pvls_err
-    if [ $? -ne 0 ]; then
-        rm -f "$TMP_CFG"
-        ERR=$(sed 's/"/\\"/g' /tmp/pvls_err 2>/dev/null | head -1)
-        printf '{"ok":false,"error":"%s"}\n' "$ERR"; exit
-    fi
-    if ! sing-box check -c "$TMP_CFG" >/tmp/pvls_check 2>&1; then
-        rm -f "$TMP_CFG"
-        ERR=$(sed 's/"/\\"/g' /tmp/pvls_check 2>/dev/null | tail -1)
-        printf '{"ok":false,"error":"%s"}\n' "$ERR"; exit
-    fi
-    chmod 600 "$TMP_CFG"
-    mv "$TMP_CFG" "$CFG"
-    /etc/init.d/sing-box restart 2>/dev/null; sleep 2
+    rm -f /tmp/24spark-paused
+    "$MANAGER" apply "$VLESS"
+    RC=$?
     PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
-    if [ -n "$PID" ]; then
-        umask 077
-        printf '%s\n' "$VLESS" > "$ACTIVE_FILE"
-    fi
-    if [ -n "$PID" ]; then
+    if [ "$RC" = 0 ] && [ -n "$PID" ]; then
         printf '{"ok":true,"pid":"%s"}\n' "$PID"
     else
-        ERR=$(logread 2>/dev/null | grep -i 'sing-box' | tail -1 | sed 's/"/\\"/g')
+        ERR=$(tail -1 /tmp/24spark-config-error 2>/dev/null | sed 's/"/\\"/g')
+        [ -n "$ERR" ] || ERR=$(logread 2>/dev/null | grep -i 'sing-box' | tail -1 | sed 's/"/\\"/g')
         printf '{"ok":false,"error":"%s"}\n' "${ERR:-sing-box failed to start}"
     fi
+    ;;
+
+update)
+    if [ "$(cat /tmp/24spark-update.state 2>/dev/null)" = running ]; then
+        printf '{"ok":false,"error":"update already running"}\n'; exit
+    fi
+    echo running > /tmp/24spark-update.state
+    (
+        if curl -fL --connect-timeout 30 --max-time 300 \
+            -o /tmp/24spark-install.sh \
+            https://raw.githubusercontent.com/arankarrr/24spark/main/install.sh && \
+           sh /tmp/24spark-install.sh; then
+            echo success > /tmp/24spark-update.state
+        else
+            echo error > /tmp/24spark-update.state
+        fi
+    ) >/tmp/24spark-update.log 2>&1 </dev/null &
+    printf '{"ok":true}\n'
+    ;;
+
+updatestatus)
+    STATE=$(cat /tmp/24spark-update.state 2>/dev/null); [ -n "$STATE" ] || STATE=idle
+    printf '{"state":"%s"}\n' "$STATE"
     ;;
 
 *)  printf '{"error":"unknown: %s"}\n' "$ACTION" ;;
