@@ -107,6 +107,7 @@ backup_file() {
 for target in \
     /www/cgi-bin/sb \
     /www/singbox.html \
+    /etc/sing-box/config.json \
     /etc/sing-box/parse_vless.sh \
     /etc/sing-box/parse_subscription.sh \
     /etc/sing-box/tproxy-setup.sh \
@@ -139,6 +140,24 @@ chmod 600 /etc/sing-box/subscriptions.txt
 
 if [ ! -s /etc/sing-box/config.json ]; then
     put_file "$PAYLOAD/config.default.json" /etc/sing-box/config.json 600
+fi
+
+# Rebuild the current node with the newest generator. This also applies
+# bootstrap-DNS migrations to installations upgraded from an older release.
+if [ -s /etc/sing-box/active_node.url ]; then
+    say 'rebuilding active node configuration'
+    ACTIVE_NODE=$(tr -d '\r\n' < /etc/sing-box/active_node.url)
+    NEW_CONFIG=/etc/sing-box/config.json.new.$$
+    if ! /etc/sing-box/parse_vless.sh "$ACTIVE_NODE" > "$NEW_CONFIG"; then
+        rm -f "$NEW_CONFIG"
+        die "cannot rebuild active node; previous config is in $BACKUP"
+    fi
+    chmod 600 "$NEW_CONFIG"
+    if ! sing-box check -c "$NEW_CONFIG"; then
+        rm -f "$NEW_CONFIG"
+        die "rebuilt config is invalid; previous config is in $BACKUP"
+    fi
+    mv "$NEW_CONFIG" /etc/sing-box/config.json
 fi
 
 if ! sing-box check -c /etc/sing-box/config.json; then

@@ -154,18 +154,33 @@ setnode)
     [ -z "$RAW" ] && printf '{"ok":false,"error":"empty raw"}\n' && exit
     VLESS=$(url_decode "$RAW")
     [ -z "$VLESS" ] && printf '{"ok":false,"error":"empty vless"}\n' && exit
-    /etc/sing-box/parse_vless.sh "$VLESS" > "$CFG" 2>/tmp/pvls_err
+    TMP_CFG="$CFG.new.$$"
+    rm -f "$TMP_CFG"
+    /etc/sing-box/parse_vless.sh "$VLESS" > "$TMP_CFG" 2>/tmp/pvls_err
     if [ $? -ne 0 ]; then
+        rm -f "$TMP_CFG"
         ERR=$(sed 's/"/\\"/g' /tmp/pvls_err 2>/dev/null | head -1)
         printf '{"ok":false,"error":"%s"}\n' "$ERR"; exit
     fi
+    if ! sing-box check -c "$TMP_CFG" >/tmp/pvls_check 2>&1; then
+        rm -f "$TMP_CFG"
+        ERR=$(sed 's/"/\\"/g' /tmp/pvls_check 2>/dev/null | tail -1)
+        printf '{"ok":false,"error":"%s"}\n' "$ERR"; exit
+    fi
+    chmod 600 "$TMP_CFG"
+    mv "$TMP_CFG" "$CFG"
     /etc/init.d/sing-box restart 2>/dev/null; sleep 2
     PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
     if [ -n "$PID" ]; then
         umask 077
         printf '%s\n' "$VLESS" > "$ACTIVE_FILE"
     fi
-    printf '{"ok":true,"pid":"%s"}\n' "${PID:-}"
+    if [ -n "$PID" ]; then
+        printf '{"ok":true,"pid":"%s"}\n' "$PID"
+    else
+        ERR=$(logread 2>/dev/null | grep -i 'sing-box' | tail -1 | sed 's/"/\\"/g')
+        printf '{"ok":false,"error":"%s"}\n' "${ERR:-sing-box failed to start}"
+    fi
     ;;
 
 *)  printf '{"error":"unknown: %s"}\n' "$ACTION" ;;

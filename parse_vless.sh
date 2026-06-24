@@ -104,6 +104,7 @@ cat <<EOF
       "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
       "download_detour": "direct"}],
     "final": "proxy",
+    "default_domain_resolver": "local",
     "auto_detect_interface": true
   }
 }
