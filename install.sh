@@ -21,14 +21,30 @@ fetch() {
     src=$1
     dst=$2
     if command -v curl >/dev/null 2>&1; then
-        curl -fL --connect-timeout 15 --max-time 60 "$BASE_URL/$src" -o "$dst"
-    elif command -v uclient-fetch >/dev/null 2>&1; then
-        uclient-fetch -T 60 -O "$dst" "$BASE_URL/$src"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -T 60 -O "$dst" "$BASE_URL/$src"
-    else
-        die 'curl, uclient-fetch or wget is required'
+        if curl -fL \
+            --connect-timeout 30 \
+            --max-time 180 \
+            --retry 4 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            "$BASE_URL/$src" -o "$dst"; then
+            return 0
+        fi
+        say "curl failed for $src; trying another downloader"
     fi
+    rm -f "$dst"
+    if command -v uclient-fetch >/dev/null 2>&1; then
+        if uclient-fetch -T 180 -t 4 -O "$dst" "$BASE_URL/$src"; then
+            return 0
+        fi
+    fi
+    rm -f "$dst"
+    if command -v wget >/dev/null 2>&1; then
+        if wget -T 180 -t 4 -O "$dst" "$BASE_URL/$src"; then
+            return 0
+        fi
+    fi
+    die "download failed: $src"
 }
 
 package_installed() {
