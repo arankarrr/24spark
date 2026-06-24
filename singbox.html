@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>24spark</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;padding:20px 16px}
+.wrap{max-width:680px;margin:0 auto}
+h1{font-size:1.3rem;font-weight:700;margin-bottom:18px;color:#f8fafc}
+.card{background:#1a1d27;border-radius:12px;padding:18px 20px;margin-bottom:12px;border:1px solid #2d3047}
+.card-title{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center}
+.flex1{flex:1;min-width:0}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:8px;border:none;font-size:.85rem;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-green{background:#16a34a;color:#fff}.btn-green:hover:not(:disabled){background:#15803d}
+.btn-red  {background:#dc2626;color:#fff}.btn-red:hover:not(:disabled)  {background:#b91c1c}
+.btn-blue {background:#2563eb;color:#fff}.btn-blue:hover:not(:disabled) {background:#1d4ed8}
+.btn-gray {background:#334155;color:#cbd5e1}.btn-gray:hover:not(:disabled){background:#475569}
+.btn-icon {padding:6px 10px;font-size:.95rem}
+.status-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;transition:.3s}
+.dot.on {background:#22c55e;box-shadow:0 0 8px #22c55e55}
+.dot.off{background:#ef4444}
+.dot.busy{background:#f59e0b;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.status-label{font-size:1rem;font-weight:600}
+input[type=url],input[type=text]{width:100%;background:#0f1117;border:1px solid #334155;border-radius:8px;padding:9px 12px;color:#e2e8f0;font-size:.85rem;outline:none;transition:.15s}
+input:focus{border-color:#3b82f6}
+.sub-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.sub-item{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#0f1117;border-radius:8px;border:1px solid #2d3047}
+.sub-url{flex:1;font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:320px;overflow-y:auto}
+.node{padding:11px 14px;border-radius:8px;border:2px solid #2d3047;cursor:pointer;transition:.15s;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.node:hover{border-color:#475569;background:#1e2235}
+.node.active{border-color:#3b82f6;background:#1e3a5f22}
+.node-name{font-weight:600;font-size:.88rem;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-host{font-size:.74rem;color:#64748b;margin-top:2px}
+.badge{font-size:.68rem;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;white-space:nowrap;flex-shrink:0}
+.log-box{background:#090b10;border-radius:8px;padding:12px;font-family:monospace;font-size:.72rem;line-height:1.55;max-height:260px;overflow-y:auto;color:#94a3b8;white-space:pre-wrap;word-break:break-all}
+.msg{font-size:.78rem;min-height:1.2em;margin-top:8px}
+.msg.ok{color:#22c55e}.msg.err{color:#f87171}.msg.info{color:#94a3b8}
+.empty{color:#475569;font-size:.82rem;text-align:center;padding:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>&#x1F6E1;&#xFE0F; 24spark</h1>
+
+  <!-- STATUS -->
+  <div class="card">
+    <div class="card-title">Статус</div>
+    <div class="status-row">
+      <div class="dot busy" id="dot"></div>
+      <span class="status-label" id="status-text">Загрузка...</span>
+    </div>
+    <div class="row">
+      <button class="btn btn-green" id="btn-start" onclick="sbAction('start')" disabled>&#x25B6; Запустить</button>
+      <button class="btn btn-red"   id="btn-stop"  onclick="sbAction('stop')"  disabled>&#x25A0; Стоп</button>
+      <button class="btn btn-gray"  onclick="refreshStatus()">&#x21BB;</button>
+    </div>
+  </div>
+
+  <!-- SUBSCRIPTIONS -->
+  <div class="card">
+    <div class="card-title">Подписки</div>
+    <div id="sub-list" class="sub-list"></div>
+    <div class="row" style="margin-bottom:10px">
+      <input class="flex1" type="url" id="sub-input" placeholder="https://..." />
+      <button class="btn btn-blue" onclick="addSub()">Добавить</button>
+    </div>
+    <button class="btn btn-gray" onclick="loadNodes()" style="margin-bottom:10px">&#x21BB; Загрузить ноды</button>
+    <div id="nodes-list" class="node-list">
+      <div class="empty">Нажмите «Загрузить ноды»</div>
+    </div>
+    <div class="msg info" id="sub-msg"></div>
+  </div>
+
+  <!-- LOG -->
+  <div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Лог</span>
+      <button class="btn btn-gray" style="padding:4px 10px;font-size:.75rem" onclick="loadLog()">&#x21BB;</button>
+    </div>
+    <div class="log-box" id="log-box">...</div>
+  </div>
+</div>
+
+<script>
+const API = '/cgi-bin/sb';
+
+async function api(action, body) {
+  try {
+    const opts = body != null
+      ? {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'action='+action+'&'+body}
+      : {};
+    const url = body != null ? API : API+'?action='+action;
+    return await (await fetch(url, opts)).json();
+  } catch(e) { return {error:e.message}; }
+}
+
+function msg(text, cls) {
+  const el = document.getElementById('sub-msg');
+  el.textContent = text; el.className = 'msg '+(cls||'info');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function decodeLabel(s) {
+  try { return decodeURIComponent(String(s).replace(/\+/g,' ')); } catch(e) { return s; }
+}
+
+async function refreshStatus() {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('status-text');
+  dot.className = 'dot busy';
+  const d = await api('status');
+  if (d.error) { dot.className='dot off'; txt.textContent='Ошибка'; return; }
+  dot.className = 'dot '+(d.running?'on':'off');
+  txt.textContent = d.running ? 'Работает (PID '+d.pid+')' : 'Остановлен';
+  document.getElementById('btn-start').disabled = !!d.running;
+  document.getElementById('btn-stop').disabled  = !d.running;
+}
+
+async function sbAction(act) {
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled  = true;
+  document.getElementById('dot').className = 'dot busy';
+  document.getElementById('status-text').textContent = act==='start' ? 'Запускаем...' : 'Останавливаем...';
+  await api(act, '');
+  await new Promise(r=>setTimeout(r,2000));
+  refreshStatus();
+}
+
+async function loadSubs() {
+  const d = await api('listsubs');
+  const list = document.getElementById('sub-list');
+  if (!d.subs || d.subs.length===0) {
+    list.innerHTML = '<div class="empty">Нет подписок</div>'; return;
+  }
+  list.innerHTML = d.subs.map(s =>
+    '<div class="sub-item">'+
+      '<span class="sub-url" title="'+esc(s.url)+'">'+esc(s.url)+'</span>'+
+      '<button class="btn btn-red btn-icon" onclick="delSub(\''+esc(s.url)+'\')">&#x2715;</button>'+
+    '</div>'
+  ).join('');
+}
+
+async function addSub() {
+  const url = document.getElementById('sub-input').value.trim();
+  if (!url) { msg('Введите URL', 'err'); return; }
+  msg('Добавляю...', 'info');
+  const d = await api('addsub', 'url='+encodeURIComponent(url));
+  if (d.ok) {
+    document.getElementById('sub-input').value = '';
+    await loadSubs();
+    msg('Добавлено! Загружаю ноды...', 'ok');
+    await loadNodes();
+  } else {
+    msg('Ошибка: '+(d.error||'unknown'), 'err');
+  }
+}
+
+async function delSub(url) {
+  const d = await api('delsub', 'url='+encodeURIComponent(url));
+  if (d.ok) { await loadSubs(); msg('Удалено', 'ok'); }
+  else msg('Ошибка: '+(d.error||'unknown'), 'err');
+}
+
+async function loadNodes() {
+  msg('Загружаю ноды из всех подписок...', 'info');
+  document.getElementById('nodes-list').innerHTML = '<div class="empty">Загрузка...</div>';
+  const d = await api('nodes', '');
+  const list = document.getElementById('nodes-list');
+  if (d.error) { list.innerHTML='<div class="empty">'+esc(d.error)+'</div>'; msg('','info'); return; }
+  if (!d.nodes || d.nodes.length===0) {
+    list.innerHTML='<div class="empty">Нод не найдено</div>'; msg('','info'); return;
+  }
+  list.innerHTML = d.nodes.map((n,i) =>
+    '<div class="node" onclick="applyNode(\''+esc(n.raw)+'\',\''+esc(decodeLabel(n.label))+'\')">'+
+      '<div class="flex1" style="min-width:0">'+
+        '<div class="node-name">'+esc(decodeLabel(n.label)||'Нода '+(i+1))+'</div>'+
+        '<div class="node-host">'+esc(n.host)+':'+esc(n.port)+'</div>'+
+      '</div>'+
+      '<span class="badge">VLESS</span>'+
+    '</div>'
+  ).join('');
+  msg('Найдено нод: '+d.nodes.length, 'ok');
+}
+
+async function applyNode(raw, label) {
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  msg('Применяю: '+label+'...', 'info');
+  const d = await api('setnode', 'raw='+encodeURIComponent(raw));
+  if (d.ok) {
+    msg('Активна: '+label+(d.pid?' (PID '+d.pid+')':''), 'ok');
+    await refreshStatus();
+    await loadLog();
+  } else {
+    msg('Ошибка: '+(d.error||'unknown'), 'err');
+  }
+}
+
+async function loadLog() {
+  const d = await api('log');
+  const el = document.getElementById('log-box');
+  el.textContent = d.log ? d.log.replace(/\|/g,'\n') : (d.error||'(пусто)');
+  el.scrollTop = el.scrollHeight;
+}
+
+refreshStatus();
+loadSubs();
+loadLog();
+setInterval(refreshStatus, 12000);
+setInterval(loadLog, 20000);
+</script>
+</body>
+</html>

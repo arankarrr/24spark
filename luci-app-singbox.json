@@ -1,0 +1,10 @@
+{
+	"admin/services/singbox": {
+		"title": "24spark",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "singbox"
+		}
+	}
+}
