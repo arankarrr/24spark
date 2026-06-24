@@ -34,15 +34,25 @@ fetch() {
     fi
     rm -f "$dst"
     if command -v uclient-fetch >/dev/null 2>&1; then
-        if uclient-fetch -T 180 -t 4 -O "$dst" "$BASE_URL/$src"; then
-            return 0
-        fi
+        attempt=1
+        while [ "$attempt" -le 4 ]; do
+            uclient-fetch -T 180 -O "$dst" "$BASE_URL/$src" && return 0
+            rm -f "$dst"
+            say "uclient-fetch attempt $attempt failed for $src"
+            attempt=$((attempt + 1))
+            sleep 3
+        done
     fi
     rm -f "$dst"
     if command -v wget >/dev/null 2>&1; then
-        if wget -T 180 -t 4 -O "$dst" "$BASE_URL/$src"; then
-            return 0
-        fi
+        attempt=1
+        while [ "$attempt" -le 4 ]; do
+            wget -T 180 -O "$dst" "$BASE_URL/$src" && return 0
+            rm -f "$dst"
+            say "wget attempt $attempt failed for $src"
+            attempt=$((attempt + 1))
+            sleep 3
+        done
     fi
     die "download failed: $src"
 }
