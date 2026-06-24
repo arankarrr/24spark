@@ -73,7 +73,7 @@ input:focus{border-color:#3b82f6}
     </div>
     <button class="btn btn-gray" onclick="loadNodes()" style="margin-bottom:10px">&#x21BB; Загрузить ноды</button>
     <div id="nodes-list" class="node-list">
-      <div class="empty">Нажмите «Загрузить ноды»</div>
+      <div class="empty">Загрузка нод...</div>
     </div>
     <div class="msg info" id="sub-msg"></div>
   </div>
@@ -214,6 +214,7 @@ async function loadLog() {
 
 refreshStatus();
 loadSubs();
+loadNodes();
 loadLog();
 setInterval(refreshStatus, 12000);
 setInterval(loadLog, 20000);
