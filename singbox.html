@@ -180,12 +180,12 @@ async function loadNodes() {
     list.innerHTML='<div class="empty">Нод не найдено</div>'; msg('','info'); return;
   }
   list.innerHTML = d.nodes.map((n,i) =>
-    '<div class="node" onclick="applyNode(\''+esc(n.raw)+'\',\''+esc(decodeLabel(n.label))+'\')">'+
+    '<div class="node'+(n.active?' active':'')+'" onclick="applyNode(\''+esc(n.raw)+'\',\''+esc(decodeLabel(n.label))+'\')">'+
       '<div class="flex1" style="min-width:0">'+
         '<div class="node-name">'+esc(decodeLabel(n.label)||'Нода '+(i+1))+'</div>'+
         '<div class="node-host">'+esc(n.host)+':'+esc(n.port)+'</div>'+
       '</div>'+
-      '<span class="badge">VLESS</span>'+
+      '<span class="badge">'+(n.active?'АКТИВНА':'VLESS')+'</span>'+
     '</div>'
   ).join('');
   msg('Найдено нод: '+d.nodes.length, 'ok');

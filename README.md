@@ -8,8 +8,9 @@
 Подключитесь к роутеру по SSH и выполните:
 
 ```sh
-BASE_URL=https://raw.githubusercontent.com/arankarrr/24spark/main \
-  sh -c "$(wget -qO- https://raw.githubusercontent.com/arankarrr/24spark/main/install.sh)"
+wget -O /tmp/24spark-install.sh \
+  https://raw.githubusercontent.com/arankarrr/24spark/main/install.sh
+sh /tmp/24spark-install.sh
 ```
 
 После установки откройте LuCI и перейдите в `Службы → 24spark`.
@@ -20,6 +21,7 @@ BASE_URL=https://raw.githubusercontent.com/arankarrr/24spark/main \
 - ставит недостающие пакеты через `opkg`;
 - создаёт резервную копию заменяемых файлов в `/root/24spark-backup-*`;
 - сохраняет существующие `config.json`, подписки и HWID;
+- сохраняет и восстанавливает выделение активной ноды;
 - проверяет JSON и shell-скрипты до установки;
 - проверяет конфигурацию командой `sing-box check`;
 - включает автозапуск и запускает сервис.
@@ -42,5 +44,5 @@ sh /tmp/24spark-uninstall.sh
 
 ## Безопасность
 
-Не публикуйте `config.json`, `subscriptions.txt`, `happ.hwid`, VLESS-ссылки или
-URL подписок. Они исключены из репозитория через `.gitignore`.
+Не публикуйте `config.json`, `subscriptions.txt`, `active_node.url`, `happ.hwid`,
+VLESS-ссылки или URL подписок. Они исключены из репозитория через `.gitignore`.

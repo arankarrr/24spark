@@ -19,7 +19,8 @@ rm -f \
 rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/*
 
 if [ "${1:-}" = '--purge' ]; then
-    rm -f /etc/sing-box/config.json /etc/sing-box/subscriptions.txt /etc/sing-box/happ.hwid
+    rm -f /etc/sing-box/config.json /etc/sing-box/subscriptions.txt \
+        /etc/sing-box/happ.hwid /etc/sing-box/active_node.url
 fi
 
 echo '24spark integration removed. The sing-box package and configuration were preserved.'

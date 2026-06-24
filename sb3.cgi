@@ -16,6 +16,7 @@ SUBS_FILE=/etc/sing-box/subscriptions.txt
 CFG=/etc/sing-box/config.json
 LOG=/var/log/sing-box.log
 HWID_FILE=/etc/sing-box/happ.hwid
+ACTIVE_FILE=/etc/sing-box/active_node.url
 
 url_decode() {
     printf '%s\n' "$1" | sed 's/+/ /g' | awk '{
@@ -131,7 +132,20 @@ nodes)
         fetch_vless "$U"
     done | grep '^vless://' | grep -v '@0\.0\.0\.0:')
     [ -z "$ALL" ] && printf '{"nodes":[]}\n' && exit
-    JSON=$(printf '%s\n' "$ALL" | awk 'BEGIN{printf "[";i=0}{i++;line=$0;if(i>1)printf ",";n=split(line,a,"#");lbl=(n>1)?a[n]:"Node"i;gsub(/"/,"",lbl);h=line;sub(/vless:\/\/[^@]*@/,"",h);split(h,hp,":");host=hp[1];p=h;sub(/[^:]*:/,"",p);split(p,pp,"?");port=pp[1];raw=line;gsub(/"/,"\\\"",raw);printf "{\"idx\":%d,\"label\":\"%s\",\"host\":\"%s\",\"port\":\"%s\",\"raw\":\"%s\"}",i,lbl,host,port,raw}END{printf "]"}')
+    if [ ! -s "$ACTIVE_FILE" ]; then
+        CFG_HOST=$(jsonfilter -q -i "$CFG" -e '$.outbounds[0].server' 2>/dev/null)
+        CFG_PORT=$(jsonfilter -q -i "$CFG" -e '$.outbounds[0].server_port' 2>/dev/null)
+        CFG_UUID=$(jsonfilter -q -i "$CFG" -e '$.outbounds[0].uuid' 2>/dev/null)
+        if [ -n "$CFG_HOST" ] && [ -n "$CFG_PORT" ] && [ -n "$CFG_UUID" ]; then
+            DETECTED=$(printf '%s\n' "$ALL" | grep -F "vless://$CFG_UUID@$CFG_HOST:$CFG_PORT?" | head -1)
+            if [ -n "$DETECTED" ]; then
+                umask 077
+                printf '%s\n' "$DETECTED" > "$ACTIVE_FILE"
+            fi
+        fi
+    fi
+    ACTIVE=$(cat "$ACTIVE_FILE" 2>/dev/null | tr -d '\r\n')
+    JSON=$(printf '%s\n' "$ALL" | awk -v active="$ACTIVE" 'BEGIN{printf "[";i=0}{i++;line=$0;is_active=(line==active?"true":"false");if(i>1)printf ",";n=split(line,a,"#");lbl=(n>1)?a[n]:"Node"i;gsub(/"/,"",lbl);h=line;sub(/vless:\/\/[^@]*@/,"",h);split(h,hp,":");host=hp[1];p=h;sub(/[^:]*:/,"",p);split(p,pp,"?");port=pp[1];raw=line;gsub(/"/,"\\\"",raw);printf "{\"idx\":%d,\"label\":\"%s\",\"host\":\"%s\",\"port\":\"%s\",\"raw\":\"%s\",\"active\":%s}",i,lbl,host,port,raw,is_active}END{printf "]"}')
     printf '{"nodes":%s}\n' "$JSON"
     ;;
 
@@ -147,6 +161,10 @@ setnode)
     fi
     /etc/init.d/sing-box restart 2>/dev/null; sleep 2
     PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
+    if [ -n "$PID" ]; then
+        umask 077
+        printf '%s\n' "$VLESS" > "$ACTIVE_FILE"
+    fi
     printf '{"ok":true,"pid":"%s"}\n' "${PID:-}"
     ;;
 
