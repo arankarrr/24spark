@@ -90,6 +90,9 @@ input:focus{border-color:#3b82f6}
 
 <script>
 const API = '/cgi-bin/sb';
+let manualStop = false;
+let autoStarting = false;
+let lastAutoStart = 0;
 
 async function api(action, body) {
   try {
@@ -123,9 +126,20 @@ async function refreshStatus() {
   txt.textContent = d.running ? 'Работает (PID '+d.pid+')' : 'Остановлен';
   document.getElementById('btn-start').disabled = !!d.running;
   document.getElementById('btn-stop').disabled  = !d.running;
+  if (!d.running && !manualStop && !autoStarting && Date.now()-lastAutoStart > 30000) {
+    autoStarting = true;
+    lastAutoStart = Date.now();
+    dot.className = 'dot busy';
+    txt.textContent = 'Автозапуск...';
+    await api('start', '');
+    await new Promise(r=>setTimeout(r,2000));
+    autoStarting = false;
+    return refreshStatus();
+  }
 }
 
 async function sbAction(act) {
+  manualStop = act === 'stop';
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').disabled  = true;
   document.getElementById('dot').className = 'dot busy';
