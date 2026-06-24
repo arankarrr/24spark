@@ -4,7 +4,6 @@ set -eu
 PROJECT=24spark
 REPOSITORY=${GITHUB_REPOSITORY:-arankarrr/24spark}
 REF=${GITHUB_REF:-main}
-BASE_URL=${BASE_URL:-https://raw.githubusercontent.com/$REPOSITORY/$REF}
 STAGE=/tmp/24spark-install-$$
 BACKUP=/root/24spark-backup-$(date +%Y%m%d-%H%M%S)
 
@@ -17,8 +16,8 @@ die() { printf '%s\n' "[24spark] ERROR: $*" >&2; exit 1; }
 mkdir -p "$STAGE"
 trap 'rm -rf "$STAGE"' EXIT
 
-fetch() {
-    src=$1
+download_url() {
+    url=$1
     dst=$2
     if command -v curl >/dev/null 2>&1; then
         if curl -fL \
@@ -27,18 +26,18 @@ fetch() {
             --retry 4 \
             --retry-delay 3 \
             --retry-all-errors \
-            "$BASE_URL/$src" -o "$dst"; then
+            "$url" -o "$dst"; then
             return 0
         fi
-        say "curl failed for $src; trying another downloader"
+        say "curl failed; trying another downloader"
     fi
     rm -f "$dst"
     if command -v uclient-fetch >/dev/null 2>&1; then
         attempt=1
         while [ "$attempt" -le 4 ]; do
-            uclient-fetch -T 180 -O "$dst" "$BASE_URL/$src" && return 0
+            uclient-fetch -T 180 -O "$dst" "$url" && return 0
             rm -f "$dst"
-            say "uclient-fetch attempt $attempt failed for $src"
+            say "uclient-fetch attempt $attempt failed"
             attempt=$((attempt + 1))
             sleep 3
         done
@@ -47,14 +46,14 @@ fetch() {
     if command -v wget >/dev/null 2>&1; then
         attempt=1
         while [ "$attempt" -le 4 ]; do
-            wget -T 180 -O "$dst" "$BASE_URL/$src" && return 0
+            wget -T 180 -O "$dst" "$url" && return 0
             rm -f "$dst"
-            say "wget attempt $attempt failed for $src"
+            say "wget attempt $attempt failed"
             attempt=$((attempt + 1))
             sleep 3
         done
     fi
-    die "download failed: $src"
+    die "download failed: $url"
 }
 
 package_installed() {
@@ -76,20 +75,26 @@ command -v sing-box >/dev/null 2>&1 || die 'sing-box executable is unavailable'
 command -v nft >/dev/null 2>&1 || die 'nftables is unavailable'
 command -v jsonfilter >/dev/null 2>&1 || die 'jsonfilter is unavailable'
 
-say 'downloading files'
+say 'downloading repository archive'
+ARCHIVE_URL=${ARCHIVE_URL:-https://codeload.github.com/$REPOSITORY/tar.gz/refs/heads/$REF}
+ARCHIVE="$STAGE/repository.tar.gz"
+download_url "$ARCHIVE_URL" "$ARCHIVE"
+tar -xzf "$ARCHIVE" -C "$STAGE" || die 'cannot extract repository archive'
+PAYLOAD="$STAGE/${REPOSITORY##*/}-$REF"
+[ -d "$PAYLOAD" ] || die 'unexpected repository archive layout'
+
 for file in sb3.cgi singbox.html parse_vless.sh parse_subscription.sh sing-box.init \
             tproxy-setup.sh config.default.json luci-app-singbox.json luci-singbox.js; do
-    fetch "$file" "$STAGE/$file"
-    [ -s "$STAGE/$file" ] || die "empty download: $file"
+    [ -s "$PAYLOAD/$file" ] || die "missing archive file: $file"
 done
 
-jsonfilter -q -i "$STAGE/config.default.json" -t '$' >/dev/null || die 'invalid default config JSON'
-jsonfilter -q -i "$STAGE/luci-app-singbox.json" -t '$' >/dev/null || die 'invalid LuCI menu JSON'
-sh -n "$STAGE/sb3.cgi"
-sh -n "$STAGE/parse_vless.sh"
-sh -n "$STAGE/parse_subscription.sh"
-sh -n "$STAGE/sing-box.init"
-sh -n "$STAGE/tproxy-setup.sh"
+jsonfilter -q -i "$PAYLOAD/config.default.json" -t '$' >/dev/null || die 'invalid default config JSON'
+jsonfilter -q -i "$PAYLOAD/luci-app-singbox.json" -t '$' >/dev/null || die 'invalid LuCI menu JSON'
+sh -n "$PAYLOAD/sb3.cgi"
+sh -n "$PAYLOAD/parse_vless.sh"
+sh -n "$PAYLOAD/parse_subscription.sh"
+sh -n "$PAYLOAD/sing-box.init"
+sh -n "$PAYLOAD/tproxy-setup.sh"
 
 mkdir -p "$BACKUP" /etc/sing-box /www/cgi-bin
 backup_file() {
@@ -116,16 +121,16 @@ put_file() {
     chmod "$3" "$2"
 }
 
-put_file "$STAGE/sb3.cgi" /www/cgi-bin/sb 755
-put_file "$STAGE/singbox.html" /www/singbox.html 644
-put_file "$STAGE/parse_vless.sh" /etc/sing-box/parse_vless.sh 755
-put_file "$STAGE/parse_subscription.sh" /etc/sing-box/parse_subscription.sh 755
-put_file "$STAGE/tproxy-setup.sh" /etc/sing-box/tproxy-setup.sh 755
-put_file "$STAGE/sing-box.init" /etc/init.d/sing-box 755
+put_file "$PAYLOAD/sb3.cgi" /www/cgi-bin/sb 755
+put_file "$PAYLOAD/singbox.html" /www/singbox.html 644
+put_file "$PAYLOAD/parse_vless.sh" /etc/sing-box/parse_vless.sh 755
+put_file "$PAYLOAD/parse_subscription.sh" /etc/sing-box/parse_subscription.sh 755
+put_file "$PAYLOAD/tproxy-setup.sh" /etc/sing-box/tproxy-setup.sh 755
+put_file "$PAYLOAD/sing-box.init" /etc/init.d/sing-box 755
 
 if [ -d /usr/share/luci/menu.d ] && [ -d /www/luci-static/resources/view ]; then
-    put_file "$STAGE/luci-app-singbox.json" /usr/share/luci/menu.d/luci-app-singbox.json 644
-    put_file "$STAGE/luci-singbox.js" /www/luci-static/resources/view/singbox.js 644
+    put_file "$PAYLOAD/luci-app-singbox.json" /usr/share/luci/menu.d/luci-app-singbox.json 644
+    put_file "$PAYLOAD/luci-singbox.js" /www/luci-static/resources/view/singbox.js 644
     rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/*
 fi
 
@@ -133,7 +138,7 @@ fi
 chmod 600 /etc/sing-box/subscriptions.txt
 
 if [ ! -s /etc/sing-box/config.json ]; then
-    put_file "$STAGE/config.default.json" /etc/sing-box/config.json 600
+    put_file "$PAYLOAD/config.default.json" /etc/sing-box/config.json 600
 fi
 
 if ! sing-box check -c /etc/sing-box/config.json; then
