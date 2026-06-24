@@ -2,6 +2,7 @@
 
 BASE=/etc/sing-box
 SUBS=$BASE/subscriptions.txt
+CUSTOM=$BASE/custom_nodes.txt
 NODES=$BASE/nodes.cache
 LATENCY=/tmp/24spark-latency.tsv
 HEALTH=/tmp/24spark-health
@@ -43,6 +44,7 @@ refresh_nodes() {
     mkdir "$lock" 2>/dev/null || return 2
     tmp=$NODES.new.$$
     : > "$tmp"
+    [ -s "$CUSTOM" ] && grep '^vless://' "$CUSTOM" >> "$tmp"
     while IFS= read -r url; do
         [ -n "$url" ] && fetch_subscription "$url" >> "$tmp"
     done < "$SUBS"

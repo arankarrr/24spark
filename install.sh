@@ -144,6 +144,8 @@ fi
 
 [ -e /etc/sing-box/subscriptions.txt ] || : > /etc/sing-box/subscriptions.txt
 chmod 600 /etc/sing-box/subscriptions.txt
+[ -e /etc/sing-box/custom_nodes.txt ] || : > /etc/sing-box/custom_nodes.txt
+chmod 600 /etc/sing-box/custom_nodes.txt
 
 if [ ! -s /etc/sing-box/config.json ]; then
     put_file "$PAYLOAD/config.default.json" /etc/sing-box/config.json 600

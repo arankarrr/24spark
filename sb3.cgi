@@ -13,6 +13,7 @@ fi
 ACTION=$(echo "$QUERY" | sed "s/.*action=//;s/[&#].*//")
 
 SUBS_FILE=/etc/sing-box/subscriptions.txt
+CUSTOM_FILE=/etc/sing-box/custom_nodes.txt
 CFG=/etc/sing-box/config.json
 LOG=/var/log/sing-box.log
 HWID_FILE=/etc/sing-box/happ.hwid
@@ -130,8 +131,10 @@ stop)
     ;;
 
 listsubs)
-    R=$(cat "$SUBS_FILE" 2>/dev/null | grep -v '^[[:space:]]*$' | \
-        awk '{gsub(/"/,"\\\""); printf "%s{\"url\":\"%s\"}",(NR>1?",":""),$0}')
+    R=$({
+        grep -v '^[[:space:]]*$' "$SUBS_FILE" 2>/dev/null | awk '{print "subscription\t" $0}'
+        grep '^vless://' "$CUSTOM_FILE" 2>/dev/null | awk '{print "vless\t" $0}'
+    } | awk -F '\t' '{kind=$1; url=$0; sub(/^[^\t]*\t/,"",url); gsub(/\\/,"\\\\",url); gsub(/"/,"\\\"",url); printf "%s{\"url\":\"%s\",\"kind\":\"%s\"}",(NR>1?",":""),url,kind}')
     printf '{"subs":[%s]}\n' "$R"
     ;;
 
@@ -139,20 +142,30 @@ addsub)
     RAW=$(echo "$QUERY" | sed "s/.*url=//;s/[& ].*//")
     URL=$(url_decode "$RAW")
     [ -z "$URL" ] && printf '{"ok":false,"error":"empty url"}\n' && exit
-    touch "$SUBS_FILE"
-    if grep -qF "$URL" "$SUBS_FILE"; then
+    case "$URL" in
+        vless://*) TARGET=$CUSTOM_FILE ;;
+        http://*|https://*) TARGET=$SUBS_FILE ;;
+        *) printf '{"ok":false,"error":"use https:// or vless:// link"}\n'; exit ;;
+    esac
+    touch "$TARGET"; chmod 600 "$TARGET"
+    if grep -qxF "$URL" "$TARGET"; then
         printf '{"ok":false,"error":"already exists"}\n'; exit
     fi
-    printf '%s\n' "$URL" >> "$SUBS_FILE"
-    printf '{"ok":true}\n'
+    printf '%s\n' "$URL" >> "$TARGET"
+    [ "$TARGET" = "$CUSTOM_FILE" ] && KIND=vless || KIND=subscription
+    printf '{"ok":true,"kind":"%s"}\n' "$KIND"
     ;;
 
 delsub)
     RAW=$(echo "$QUERY" | sed "s/.*url=//;s/[& ].*//")
     URL=$(url_decode "$RAW")
     [ -z "$URL" ] && printf '{"ok":false,"error":"empty url"}\n' && exit
-    SAFE=$(printf '%s' "$URL" | sed 's|[\\&]|\\&|g;s|/|\\/|g')
-    sed -i "\\|^${SAFE}$|d" "$SUBS_FILE" 2>/dev/null
+    for FILE in "$SUBS_FILE" "$CUSTOM_FILE"; do
+        [ -e "$FILE" ] || continue
+        grep -vxF "$URL" "$FILE" > "$FILE.new.$$" || true
+        mv "$FILE.new.$$" "$FILE"
+        chmod 600 "$FILE"
+    done
     printf '{"ok":true}\n'
     ;;
 
