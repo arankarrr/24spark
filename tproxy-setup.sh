@@ -14,5 +14,6 @@ nft add chain inet sing_box prerouting '{ type filter hook prerouting priority m
 nft add rule inet sing_box prerouting meta l4proto '{ tcp, udp }' fib daddr type local accept
 nft add rule inet sing_box prerouting mark 0x1 accept
 nft add rule inet sing_box prerouting ip daddr '{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8 }' accept
+nft add rule inet sing_box prerouting udp dport 67 accept
 nft add rule inet sing_box prerouting meta l4proto tcp tproxy to :7895 meta mark set 0x1
 nft add rule inet sing_box prerouting meta l4proto udp tproxy to :7895 meta mark set 0x1
