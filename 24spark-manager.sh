@@ -128,10 +128,12 @@ apply_node() {
 }
 
 check_internet() {
-    curl -4 -fsS --socks5-hostname 127.0.0.1:2080 --connect-timeout 4 \
+    # First test the complete path through sing-box. The IP fallback avoids
+    # treating a remote DNS outage as a total proxy outage.
+    curl -fsS --proxy socks5h://127.0.0.1:2080 --connect-timeout 4 \
         --max-time 8 -o /dev/null https://www.gstatic.com/generate_204 >/dev/null 2>&1 || \
-    curl -4 -fsS --socks5-hostname 127.0.0.1:2080 --connect-timeout 4 \
-        --max-time 8 -o /dev/null https://cp.cloudflare.com/generate_204 >/dev/null 2>&1
+    curl -kfsS --proxy socks5://127.0.0.1:2080 --connect-timeout 4 \
+        --max-time 8 -o /dev/null https://1.1.1.1/cdn-cgi/trace >/dev/null 2>&1
 }
 
 check_dns() {
@@ -139,8 +141,10 @@ check_dns() {
 }
 
 check_tproxy() {
-    nft list table inet sing_box >/dev/null 2>&1 && \
-        netstat -ln 2>/dev/null | grep -q '[:.]7895[[:space:]]'
+    nft list table inet sing_box >/dev/null 2>&1 || return 1
+    # 7895 = 0x1ED7. /proc is available even when netstat/ss applets are not.
+    awk '$2 ~ /:1ED7$/ && $4 == "0A" { found=1 } END { exit !found }' \
+        /proc/net/tcp /proc/net/tcp6 2>/dev/null
 }
 
 write_health() {
