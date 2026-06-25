@@ -1,4 +1,5 @@
 #!/bin/sh
+export ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true
 
 BASE=/etc/sing-box
 SUBS=$BASE/subscriptions.txt
