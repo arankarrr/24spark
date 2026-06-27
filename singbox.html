@@ -63,6 +63,7 @@ input:focus{border-color:#3b82f6}
       <button class="btn btn-green" id="btn-start" onclick="sbAction('start')" disabled>&#x25B6; Запустить</button>
       <button class="btn btn-red"   id="btn-stop"  onclick="sbAction('stop')"  disabled>&#x25A0; Стоп</button>
       <button class="btn btn-gray"  onclick="refreshStatus()">&#x21BB;</button>
+      <button class="btn btn-gray"  id="btn-update" onclick="updateFromGithub()" style="margin-left:auto">&#x2B06; GitHub</button>
     </div>
   </div>
 
@@ -261,6 +262,22 @@ async function loadLog() {
   const el = document.getElementById('log-box');
   el.textContent = d.log ? d.log.replace(/\|/g,'\n') : (d.error||'(пусто)');
   el.scrollTop = el.scrollHeight;
+}
+
+async function updateFromGithub() {
+  const btn = document.getElementById('btn-update');
+  btn.disabled = true;
+  btn.textContent = '⏳ Обновление...';
+  const d = await api('update', '');
+  if (d.ok) {
+    btn.textContent = '✓ Готово';
+    await new Promise(r=>setTimeout(r,2000));
+    location.reload();
+  } else {
+    btn.textContent = '✗ Ошибка';
+    btn.disabled = false;
+    alert('Ошибка обновления: ' + (d.error||'unknown'));
+  }
 }
 
 function routeMsg(text, cls) {

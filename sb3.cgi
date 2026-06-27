@@ -207,6 +207,21 @@ setnode)
     printf '{"ok":true,"pid":"%s"}\n' "${PID:-}"
     ;;
 
+update)
+    BASE="https://raw.githubusercontent.com/arankarrr/24spark/main"
+    ERR=""
+    curl -sL --max-time 20 "$BASE/sb3.cgi"         -o /www/cgi-bin/sb        && chmod +x /www/cgi-bin/sb        || ERR="$ERR sb"
+    curl -sL --max-time 20 "$BASE/singbox.html"     -o /www/singbox.html                                         || ERR="$ERR html"
+    curl -sL --max-time 20 "$BASE/parse_vless.sh"   -o /etc/sing-box/parse_vless.sh  && chmod +x /etc/sing-box/parse_vless.sh  || ERR="$ERR parse"
+    curl -sL --max-time 20 "$BASE/tproxy-setup.sh"  -o /etc/sing-box/tproxy-setup.sh && chmod +x /etc/sing-box/tproxy-setup.sh || ERR="$ERR tproxy"
+    /etc/init.d/sing-box restart 2>/dev/null
+    if [ -z "$ERR" ]; then
+        printf '{"ok":true,"msg":"Обновлено"}\n'
+    else
+        printf '{"ok":false,"error":"Ошибки: %s"}\n' "$ERR"
+    fi
+    ;;
+
 listroutes)
     R=$(cat "$ROUTES_FILE" 2>/dev/null | grep -v '^[[:space:]]*$' | awk -F'|' '{
         lbl=$1; cidr=$2
