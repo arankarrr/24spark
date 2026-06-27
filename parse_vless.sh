@@ -69,10 +69,6 @@ FLOW=$(json_escape "$FLOW")
 FLOW_LINE=""
 [ -n "$FLOW" ] && FLOW_LINE="\"flow\": \"$FLOW\","
 
-# Custom game direct rules (managed by panel /routes page)
-EXTRA_DIRECT=$(cat /etc/sing-box/extra_direct_rules.json 2>/dev/null | tr -d '\n')
-[ -n "$EXTRA_DIRECT" ] && EXTRA_DIRECT=",$EXTRA_DIRECT" || EXTRA_DIRECT=""
-
 cat <<EOF
 {
   "log": {"level": "warn", "output": "/var/log/sing-box.log"},
@@ -103,7 +99,7 @@ cat <<EOF
     "rules": [
       {"protocol": "dns", "outbound": "direct"},
       {"ip_is_private": true, "outbound": "direct"},
-      {"rule_set": "geoip-ru", "outbound": "direct"}$EXTRA_DIRECT
+      {"rule_set": "geoip-ru", "outbound": "direct"}
     ],
     "rule_set": [{"type": "remote", "tag": "geoip-ru", "format": "binary",
       "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",

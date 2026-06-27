@@ -1,5 +1,4 @@
 #!/bin/sh
-export ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true
 
 BASE=/etc/sing-box
 SUBS=$BASE/subscriptions.txt
@@ -232,22 +231,11 @@ daemon_loop() {
     done
 }
 
-clear_nodes() {
-    : > "$NODES"
-    : > "$ACTIVE"
-    : > "$SUBS"
-    rm -f /tmp/24spark-latency.tsv /tmp/24spark-health \
-          /tmp/24spark-last-refresh /tmp/24spark-update.log \
-          /tmp/24spark-update.state
-    /etc/init.d/sing-box stop >/dev/null 2>&1
-}
-
 case "${1:-}" in
     refresh) refresh_nodes ;;
     benchmark) benchmark_nodes ;;
     probe) probe_node "$2" ;;
     apply) apply_node "$2" ;;
-    clear) clear_nodes ;;
     daemon) daemon_loop ;;
-    *) echo 'usage: 24spark-manager.sh refresh|benchmark|probe URL|apply URL|clear|daemon' >&2; exit 2 ;;
+    *) echo 'usage: 24spark-manager.sh refresh|benchmark|probe URL|apply URL|daemon' >&2; exit 2 ;;
 esac
