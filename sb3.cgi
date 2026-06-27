@@ -207,6 +207,18 @@ setnode)
     printf '{"ok":true,"pid":"%s"}\n' "${PID:-}"
     ;;
 
+diag)
+    PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
+    LOG_SIZE=$(wc -c < "$LOG" 2>/dev/null || echo 0)
+    LOG_TAIL=$(tail -5 "$LOG" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g;s/\\/\\\\/g;s/"/\\"/g' | awk '{printf "%s|",$0}')
+    CFG_OK=$(sing-box check -c "$CFG" 2>&1 | grep -c FATAL || echo 0)
+    NFT=$(nft list table inet sing_box 2>/dev/null | grep -c tproxy || echo 0)
+    NODE=$(grep '"server":' "$CFG" 2>/dev/null | head -1 | sed 's/.*"server": *"//;s/".*//')
+    PORT=$(grep '"server_port":' "$CFG" 2>/dev/null | head -1 | sed 's/[^0-9]//g')
+    printf '{"pid":"%s","log_bytes":%s,"log_tail":"%s","cfg_fatal":%s,"tproxy_rules":%s,"node":"%s:%s"}\n' \
+        "${PID:-}" "$LOG_SIZE" "$LOG_TAIL" "$CFG_OK" "$NFT" "$NODE" "$PORT"
+    ;;
+
 update)
     BASE="https://raw.githubusercontent.com/arankarrr/24spark/main"
     ERR=""

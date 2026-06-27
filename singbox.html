@@ -101,7 +101,10 @@ input:focus{border-color:#3b82f6}
   <div class="card">
     <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
       <span>Лог</span>
-      <button class="btn btn-gray" style="padding:4px 10px;font-size:.75rem" onclick="loadLog()">&#x21BB;</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-gray" style="padding:4px 10px;font-size:.75rem" onclick="runDiag()">Диагностика</button>
+        <button class="btn btn-gray" style="padding:4px 10px;font-size:.75rem" onclick="loadLog()">&#x21BB;</button>
+      </div>
     </div>
     <div class="log-box" id="log-box">...</div>
   </div>
@@ -262,6 +265,23 @@ async function loadLog() {
   const el = document.getElementById('log-box');
   el.textContent = d.log ? d.log.replace(/\|/g,'\n') : (d.error||'(пусто)');
   el.scrollTop = el.scrollHeight;
+}
+
+async function runDiag() {
+  const el = document.getElementById('log-box');
+  el.textContent = 'Диагностика...';
+  const d = await api('diag');
+  if (d.error) { el.textContent = 'Ошибка: ' + d.error; return; }
+  el.textContent = [
+    'PID:          ' + (d.pid || 'не найден'),
+    'Активная нода: ' + (d.node || 'неизвестно'),
+    'Лог (байт):   ' + d.log_bytes,
+    'tproxy правил: ' + d.tproxy_rules + (d.tproxy_rules==0?' ← ПРОБЛЕМА: нет nftables правил':''),
+    'Ошибок конфига: ' + d.cfg_fatal + (d.cfg_fatal>0?' ← FATAL в config.json':''),
+    '',
+    'Последние строки лога:',
+    d.log_tail ? d.log_tail.replace(/\|/g,'\n') : '(пусто)'
+  ].join('\n');
 }
 
 async function updateFromGithub() {
