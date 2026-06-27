@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>24spark</title>
+<title>sing-box VPN</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;padding:20px 16px}
@@ -32,6 +32,8 @@ input:focus{border-color:#3b82f6}
 .sub-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
 .sub-item{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#0f1117;border-radius:8px;border:1px solid #2d3047}
 .sub-url{flex:1;font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge-sub{font-size:.65rem;padding:2px 6px;border-radius:4px;background:#1e3a5f;color:#60a5fa;white-space:nowrap;flex-shrink:0;font-weight:700}
+.badge-node{font-size:.65rem;padding:2px 6px;border-radius:4px;background:#1a2e1a;color:#4ade80;white-space:nowrap;flex-shrink:0;font-weight:700}
 .node-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:320px;overflow-y:auto}
 .node{padding:11px 14px;border-radius:8px;border:2px solid #2d3047;cursor:pointer;transition:.15s;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .node:hover{border-color:#475569;background:#1e2235}
@@ -39,22 +41,16 @@ input:focus{border-color:#3b82f6}
 .node-name{font-weight:600;font-size:.88rem;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .node-host{font-size:.74rem;color:#64748b;margin-top:2px}
 .badge{font-size:.68rem;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;white-space:nowrap;flex-shrink:0}
-.node-badges{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.badge.ping-good{background:#123524;color:#4ade80}.badge.ping-mid{background:#3b2f12;color:#facc15}.badge.ping-bad{background:#3f1d24;color:#f87171}
-.health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
-.health-item{background:#0f1117;border:1px solid #2d3047;border-radius:8px;padding:9px;text-align:center}
-.health-name{font-size:.68rem;color:#64748b;margin-bottom:4px}.health-value{font-size:.78rem;font-weight:600}
-.health-value.ok{color:#4ade80}.health-value.bad{color:#f87171}.health-value.wait{color:#f59e0b}
-.hint{font-size:.72rem;color:#64748b;margin-top:9px}
 .log-box{background:#090b10;border-radius:8px;padding:12px;font-family:monospace;font-size:.72rem;line-height:1.55;max-height:260px;overflow-y:auto;color:#94a3b8;white-space:pre-wrap;word-break:break-all}
 .msg{font-size:.78rem;min-height:1.2em;margin-top:8px}
 .msg.ok{color:#22c55e}.msg.err{color:#f87171}.msg.info{color:#94a3b8}
 .empty{color:#475569;font-size:.82rem;text-align:center;padding:16px}
+.hint{font-size:.73rem;color:#475569;margin-top:5px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>&#x1F6E1;&#xFE0F; 24spark</h1>
+  <h1>&#x1F6E1;&#xFE0F; sing-box VPN</h1>
 
   <!-- STATUS -->
   <div class="card">
@@ -68,37 +64,36 @@ input:focus{border-color:#3b82f6}
       <button class="btn btn-red"   id="btn-stop"  onclick="sbAction('stop')"  disabled>&#x25A0; Стоп</button>
       <button class="btn btn-gray"  onclick="refreshStatus()">&#x21BB;</button>
     </div>
-    <div class="health-grid">
-      <div class="health-item"><div class="health-name">Интернет</div><div class="health-value wait" id="health-internet">...</div></div>
-      <div class="health-item"><div class="health-name">DNS</div><div class="health-value wait" id="health-dns">...</div></div>
-      <div class="health-item"><div class="health-name">sing-box</div><div class="health-value wait" id="health-singbox">...</div></div>
-      <div class="health-item"><div class="health-name">TProxy</div><div class="health-value wait" id="health-tproxy">...</div></div>
-    </div>
-    <div class="hint" id="health-hint">Проверка состояния...</div>
   </div>
 
   <!-- SUBSCRIPTIONS -->
   <div class="card">
-    <div class="card-title">Подписки</div>
+    <div class="card-title">Источники нод</div>
     <div id="sub-list" class="sub-list"></div>
-    <div class="row" style="margin-bottom:10px">
+    <div class="row" style="margin-bottom:4px">
       <input class="flex1" type="text" id="sub-input" placeholder="https://... или vless://..." />
-      <button class="btn btn-blue" onclick="addSub()">Добавить</button>
+      <button class="btn btn-blue" onclick="addEntry()">Добавить</button>
     </div>
-    <button class="btn btn-gray" id="btn-refresh-nodes" onclick="loadNodes(true)" style="margin-bottom:10px">&#x21BB; Обновить подписку и пинг</button>
+    <div class="hint">Вставьте URL подписки (https://) или vless:// ссылку</div>
+    <div style="height:10px"></div>
+    <button class="btn btn-gray" onclick="loadNodes()" style="margin-bottom:10px">&#x21BB; Загрузить ноды</button>
     <div id="nodes-list" class="node-list">
-      <div class="empty">Загрузка нод...</div>
+      <div class="empty">Нажмите «Загрузить ноды»</div>
     </div>
     <div class="msg info" id="sub-msg"></div>
   </div>
 
-  <!-- UPDATE -->
+  <!-- DIRECT ROUTES -->
   <div class="card">
-    <div class="card-title">Обновление 24spark</div>
-    <div class="row">
-      <button class="btn btn-blue" id="btn-update" onclick="update24spark()">Обновить из GitHub</button>
-      <span class="msg info" id="update-msg"></span>
+    <div class="card-title">Прямые маршруты (игры)</div>
+    <div id="routes-list" class="sub-list"></div>
+    <div class="row" style="margin-bottom:4px;gap:6px">
+      <input class="flex1" type="text" id="route-label" placeholder="Название (напр. Steam)" style="min-width:80px" />
+      <input class="flex1" type="text" id="route-cidr"  placeholder="IP или CIDR (напр. 77.220.0.0/14)" />
+      <button class="btn btn-blue" onclick="addRoute()">+</button>
     </div>
+    <div class="hint">Трафик к этим адресам пойдёт напрямую, минуя VPN</div>
+    <div class="msg info" id="route-msg"></div>
   </div>
 
   <!-- LOG -->
@@ -113,9 +108,6 @@ input:focus{border-color:#3b82f6}
 
 <script>
 const API = '/cgi-bin/sb';
-let manualStop = false;
-let autoStarting = false;
-let lastAutoStart = 0;
 
 async function api(action, body) {
   try {
@@ -135,11 +127,12 @@ function msg(text, cls) {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function jsq(s) {
-  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/[\r\n]/g,'');
-}
 function decodeLabel(s) {
   try { return decodeURIComponent(String(s).replace(/\+/g,' ')); } catch(e) { return s; }
+}
+function vlessHost(url) {
+  const m = url.match(/vless:\/\/[^@]+@([^?#/]+)/);
+  return m ? m[1] : url;
 }
 
 async function refreshStatus() {
@@ -152,33 +145,9 @@ async function refreshStatus() {
   txt.textContent = d.running ? 'Работает (PID '+d.pid+')' : 'Остановлен';
   document.getElementById('btn-start').disabled = !!d.running;
   document.getElementById('btn-stop').disabled  = !d.running;
-  setHealth('health-internet', d.internet);
-  setHealth('health-dns', d.dns);
-  setHealth('health-singbox', d.running);
-  setHealth('health-tproxy', d.tproxy);
-  const checked = d.last_check ? new Date(d.last_check*1000).toLocaleTimeString() : 'ожидание';
-  const ping = d.latency != null ? ' · активная нода '+d.latency+' мс' : '';
-  document.getElementById('health-hint').textContent = 'Последняя проверка: '+checked+ping+' · подписка обновляется каждый час';
-  if (!d.running && !manualStop && !autoStarting && Date.now()-lastAutoStart > 30000) {
-    autoStarting = true;
-    lastAutoStart = Date.now();
-    dot.className = 'dot busy';
-    txt.textContent = 'Автозапуск...';
-    await api('start', '');
-    await new Promise(r=>setTimeout(r,2000));
-    autoStarting = false;
-    return refreshStatus();
-  }
-}
-
-function setHealth(id, ok) {
-  const el=document.getElementById(id);
-  el.textContent=ok?'OK':'Ошибка';
-  el.className='health-value '+(ok?'ok':'bad');
 }
 
 async function sbAction(act) {
-  manualStop = act === 'stop';
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').disabled  = true;
   document.getElementById('dot').className = 'dot busy';
@@ -192,29 +161,51 @@ async function loadSubs() {
   const d = await api('listsubs');
   const list = document.getElementById('sub-list');
   if (!d.subs || d.subs.length===0) {
-    list.innerHTML = '<div class="empty">Нет подписок</div>'; return;
+    list.innerHTML = '<div class="empty">Нет источников</div>'; return;
   }
-  list.innerHTML = d.subs.map(s =>
-    '<div class="sub-item">'+
-      '<span class="badge">'+(s.kind==='vless'?'VLESS':'ПОДПИСКА')+'</span>'+
-      '<span class="sub-url" title="'+esc(s.url)+'">'+esc(s.url)+'</span>'+
-      '<button class="btn btn-red btn-icon" onclick="delSub(\''+esc(jsq(s.url))+'\')">&#x2715;</button>'+
-    '</div>'
-  ).join('');
+  list.innerHTML = d.subs.map(s => {
+    if (s.type === 'node') {
+      const hostport = vlessHost(s.url);
+      return '<div class="sub-item">'+
+        '<span class="badge-node">NODE</span>'+
+        '<span class="sub-url" title="'+esc(s.url)+'">'+esc(hostport)+'</span>'+
+        '<button class="btn btn-red btn-icon" onclick="delNode(\''+esc(s.url)+'\')">&#x2715;</button>'+
+      '</div>';
+    } else {
+      return '<div class="sub-item">'+
+        '<span class="badge-sub">SUB</span>'+
+        '<span class="sub-url" title="'+esc(s.url)+'">'+esc(s.url)+'</span>'+
+        '<button class="btn btn-red btn-icon" onclick="delSub(\''+esc(s.url)+'\')">&#x2715;</button>'+
+      '</div>';
+    }
+  }).join('');
 }
 
-async function addSub() {
-  const url = document.getElementById('sub-input').value.trim();
-  if (!url) { msg('Введите URL', 'err'); return; }
-  msg('Добавляю...', 'info');
-  const d = await api('addsub', 'url='+encodeURIComponent(url));
-  if (d.ok) {
-    document.getElementById('sub-input').value = '';
-    await loadSubs();
-    msg((d.kind==='vless'?'VLESS-нода добавлена!':'Подписка добавлена!')+' Загружаю ноды...', 'ok');
-    await loadNodes(true);
+async function addEntry() {
+  const val = document.getElementById('sub-input').value.trim();
+  if (!val) { msg('Введите URL', 'err'); return; }
+  if (val.startsWith('vless://')) {
+    msg('Добавляю ноду...', 'info');
+    const d = await api('addnode', 'url='+encodeURIComponent(val));
+    if (d.ok) {
+      document.getElementById('sub-input').value = '';
+      await loadSubs();
+      msg('Нода добавлена!', 'ok');
+      await loadNodes();
+    } else {
+      msg('Ошибка: '+(d.error||'unknown'), 'err');
+    }
   } else {
-    msg('Ошибка: '+(d.error||'unknown'), 'err');
+    msg('Добавляю подписку...', 'info');
+    const d = await api('addsub', 'url='+encodeURIComponent(val));
+    if (d.ok) {
+      document.getElementById('sub-input').value = '';
+      await loadSubs();
+      msg('Добавлено! Загружаю ноды...', 'ok');
+      await loadNodes();
+    } else {
+      msg('Ошибка: '+(d.error||'unknown'), 'err');
+    }
   }
 }
 
@@ -224,43 +215,36 @@ async function delSub(url) {
   else msg('Ошибка: '+(d.error||'unknown'), 'err');
 }
 
-async function loadNodes(force) {
-  msg(force?'Обновляю подписку и измеряю задержку...':'Загружаю сохранённые ноды...', 'info');
+async function delNode(url) {
+  const d = await api('delnode', 'url='+encodeURIComponent(url));
+  if (d.ok) { await loadSubs(); msg('Удалено', 'ok'); }
+  else msg('Ошибка: '+(d.error||'unknown'), 'err');
+}
+
+async function loadNodes() {
+  msg('Загружаю ноды...', 'info');
   document.getElementById('nodes-list').innerHTML = '<div class="empty">Загрузка...</div>';
-  const button=document.getElementById('btn-refresh-nodes');
-  button.disabled=true;
-  const d = await api(force?'refreshnodes':'nodes', '');
-  button.disabled=false;
+  const d = await api('nodes', '');
   const list = document.getElementById('nodes-list');
   if (d.error) { list.innerHTML='<div class="empty">'+esc(d.error)+'</div>'; msg('','info'); return; }
   if (!d.nodes || d.nodes.length===0) {
     list.innerHTML='<div class="empty">Нод не найдено</div>'; msg('','info'); return;
   }
   list.innerHTML = d.nodes.map((n,i) =>
-    '<div class="node'+(n.active?' active':'')+'" onclick="applyNode(this,\''+esc(jsq(n.raw))+'\',\''+esc(jsq(decodeLabel(n.label)))+'\')">'+
+    '<div class="node" onclick="applyNode(\''+esc(n.raw)+'\',\''+esc(decodeLabel(n.label))+'\')">'+
       '<div class="flex1" style="min-width:0">'+
         '<div class="node-name">'+esc(decodeLabel(n.label)||'Нода '+(i+1))+'</div>'+
         '<div class="node-host">'+esc(n.host)+':'+esc(n.port)+'</div>'+
       '</div>'+
-      '<div class="node-badges">'+
-        '<span class="badge '+pingClass(n.latency)+'">'+(n.latency==null?'нет связи':n.latency+' мс')+'</span>'+
-        '<span class="badge">'+(n.active?'АКТИВНА':'VLESS')+'</span>'+
-      '</div>'+
+      '<span class="badge">VLESS</span>'+
     '</div>'
   ).join('');
   msg('Найдено нод: '+d.nodes.length, 'ok');
 }
 
-function pingClass(ms) {
-  if (ms==null) return 'ping-bad';
-  if (ms<120) return 'ping-good';
-  if (ms<250) return 'ping-mid';
-  return 'ping-bad';
-}
-
-async function applyNode(element, raw, label) {
+async function applyNode(raw, label) {
   document.querySelectorAll('.node').forEach(n=>n.classList.remove('active'));
-  element.classList.add('active');
+  event.currentTarget.classList.add('active');
   msg('Применяю: '+label+'...', 'info');
   const d = await api('setnode', 'raw='+encodeURIComponent(raw));
   if (d.ok) {
@@ -272,21 +256,6 @@ async function applyNode(element, raw, label) {
   }
 }
 
-async function update24spark() {
-  const button=document.getElementById('btn-update');
-  const out=document.getElementById('update-msg');
-  button.disabled=true; out.textContent='Обновление запущено...'; out.className='msg info';
-  const d=await api('update','');
-  if (!d.ok) { out.textContent='Ошибка: '+(d.error||'unknown'); out.className='msg err'; button.disabled=false; return; }
-  for (let i=0;i<40;i++) {
-    await new Promise(r=>setTimeout(r,3000));
-    const s=await api('updatestatus');
-    if (s.state==='success') { out.textContent='Обновлено. Перезагружаю страницу...'; out.className='msg ok'; setTimeout(()=>location.reload(),1500); return; }
-    if (s.state==='error') { out.textContent='Ошибка обновления. Смотрите лог.'; out.className='msg err'; button.disabled=false; return; }
-  }
-  out.textContent='Обновление продолжается в фоне'; button.disabled=false;
-}
-
 async function loadLog() {
   const d = await api('log');
   const el = document.getElementById('log-box');
@@ -294,9 +263,51 @@ async function loadLog() {
   el.scrollTop = el.scrollHeight;
 }
 
+function routeMsg(text, cls) {
+  const el = document.getElementById('route-msg');
+  el.textContent = text; el.className = 'msg '+(cls||'info');
+}
+
+async function loadRoutes() {
+  const d = await api('listroutes');
+  const list = document.getElementById('routes-list');
+  if (!d.routes || d.routes.length===0) {
+    list.innerHTML = '<div class="empty">Нет маршрутов</div>'; return;
+  }
+  list.innerHTML = d.routes.map(r =>
+    '<div class="sub-item">'+
+      '<span class="badge-node" style="background:#2d1a3a;color:#c084fc">DIR</span>'+
+      '<span class="sub-url"><b style="color:#e2e8f0">'+esc(r.label)+'</b> &nbsp;'+esc(r.cidr)+'</span>'+
+      '<button class="btn btn-red btn-icon" onclick="delRoute(\''+esc(r.cidr)+'\')">&#x2715;</button>'+
+    '</div>'
+  ).join('');
+}
+
+async function addRoute() {
+  const label = document.getElementById('route-label').value.trim();
+  const cidr  = document.getElementById('route-cidr').value.trim();
+  if (!label || !cidr) { routeMsg('Заполните название и IP/CIDR', 'err'); return; }
+  routeMsg('Добавляю...', 'info');
+  const d = await api('addroute', 'label='+encodeURIComponent(label)+'&cidr='+encodeURIComponent(cidr));
+  if (d.ok) {
+    document.getElementById('route-label').value = '';
+    document.getElementById('route-cidr').value  = '';
+    await loadRoutes();
+    routeMsg('Добавлено — вступило в силу немедленно', 'ok');
+  } else {
+    routeMsg('Ошибка: '+(d.error||'unknown'), 'err');
+  }
+}
+
+async function delRoute(cidr) {
+  const d = await api('delroute', 'cidr='+encodeURIComponent(cidr));
+  if (d.ok) { await loadRoutes(); routeMsg('Удалено', 'ok'); }
+  else routeMsg('Ошибка: '+(d.error||'unknown'), 'err');
+}
+
 refreshStatus();
 loadSubs();
-loadNodes();
+loadRoutes();
 loadLog();
 setInterval(refreshStatus, 12000);
 setInterval(loadLog, 20000);

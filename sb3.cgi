@@ -13,15 +13,10 @@ fi
 ACTION=$(echo "$QUERY" | sed "s/.*action=//;s/[&#].*//")
 
 SUBS_FILE=/etc/sing-box/subscriptions.txt
-CUSTOM_FILE=/etc/sing-box/custom_nodes.txt
+MANUAL_FILE=/etc/sing-box/manual_nodes.txt
+ROUTES_FILE=/etc/sing-box/custom_direct.txt
 CFG=/etc/sing-box/config.json
 LOG=/var/log/sing-box.log
-HWID_FILE=/etc/sing-box/happ.hwid
-ACTIVE_FILE=/etc/sing-box/active_node.url
-NODES_FILE=/etc/sing-box/nodes.cache
-LATENCY_FILE=/tmp/24spark-latency.tsv
-HEALTH_FILE=/tmp/24spark-health
-MANAGER=/etc/sing-box/24spark-manager.sh
 
 url_decode() {
     printf '%s\n' "$1" | sed 's/+/ /g' | awk '{
@@ -43,73 +38,38 @@ url_decode() {
 
 fetch_vless() {
     U="$1"
-    for UA in "clash" "v2rayNG/1.8.0"; do
+    for UA in "clash" "v2rayNG/1.8.0" "Happ/1.0"; do
         RAW=$(curl -sL --max-time 15 -H "Accept-Encoding: identity" -A "$UA" "$U" 2>/dev/null)
         DEC=$(printf '%s' "$RAW" | base64 -d 2>/dev/null)
-        NODES=$(printf '%s\n' "$DEC" | grep '^vless://' | grep -v '@0\.0\.0\.0:')
-        if [ -n "$NODES" ]; then
-            printf '%s\n' "$NODES"
-            return
-        fi
-        NODES=$(printf '%s\n' "$RAW" | grep '^vless://' | grep -v '@0\.0\.0\.0:')
-        if [ -n "$NODES" ]; then
-            printf '%s\n' "$NODES"
+        if echo "$DEC" | grep -q '^vless://'; then echo "$DEC" | grep '^vless://'; return; fi
+        if echo "$RAW" | grep -q '^vless://'; then echo "$RAW" | grep '^vless://'; return; fi
+        if echo "$RAW" | grep -q '"protocol":"vless"'; then
+            echo "$RAW" | awk '
+            /"protocol":"vless"/{found=1;host="";port="";uuid="";flow="";fp="";sni="";pbk="";sid=""}
+            found && /"address":/{match($0,/"address":"([^"]+)"/,a);host=a[1]}
+            found && /"port":/{match($0,/"port":([0-9]+)/,a);port=a[1]}
+            found && /"id":/{match($0,/"id":"([^"]+)"/,a);uuid=a[1]}
+            found && /"flow":/{match($0,/"flow":"([^"]+)"/,a);flow=a[1]}
+            found && /"fingerprint":/{match($0,/"fingerprint":"([^"]+)"/,a);fp=a[1]}
+            found && /"serverName":/{match($0,/"serverName":"([^"]+)"/,a);sni=a[1]}
+            found && /"publicKey":/{match($0,/"publicKey":"([^"]+)"/,a);pbk=a[1]}
+            found && /"shortId":/{match($0,/"shortId":"([^"]+)"/,a);sid=a[1]}
+            found && host!=""&&port!=""&&uuid!=""&&uuid!="00000000-0000-0000-0000-000000000000"{
+                f=(flow!=""?"&flow="flow:"")
+                fp2=(fp!=""?fp:"chrome")
+                printf "vless://%s@%s:%s?type=tcp&security=reality&pbk=%s&fp=%s&sni=%s&sid=%s%s#node\n",uuid,host,port,pbk,fp2,sni,sid,f
+                found=0
+            }'
             return
         fi
     done
-
-    if [ ! -s "$HWID_FILE" ]; then
-        umask 077
-        SEED=$(cat /etc/machine-id 2>/dev/null)
-        [ -n "$SEED" ] || SEED="$(hostname)-$(cat /sys/class/net/br-lan/address 2>/dev/null)"
-        printf '%s' "$SEED" | sha256sum | awk '{print $1}' > "$HWID_FILE"
-    fi
-    HWID=$(cat "$HWID_FILE" 2>/dev/null)
-    RELEASE=$(sed -n "s/^DISTRIB_RELEASE='\(.*\)'/\1/p" /etc/openwrt_release 2>/dev/null)
-    [ -n "$RELEASE" ] || RELEASE=unknown
-    RAW=$(curl -sL --max-time 20 -H "Accept-Encoding: identity" \
-        -H "X-Hwid: $HWID" \
-        -H "X-Device-OS: OpenWrt" \
-        -H "X-Ver-OS: $RELEASE" \
-        -H "X-Device-Model: OpenWrt Router" \
-        -H "X-Device-Name: 24spark" \
-        -H "X-App-Version: 3.0.0" \
-        -H "X-App-Name: Happ" \
-        -A "Happ/3.0.0" "$U" 2>/dev/null)
-    printf '%s' "$RAW" | /etc/sing-box/parse_subscription.sh 2>/dev/null
-}
-
-health_value() {
-    sed -n "s/^$1=//p" "$HEALTH_FILE" 2>/dev/null | head -1
-}
-
-render_nodes() {
-    ACTIVE=$(cat "$ACTIVE_FILE" 2>/dev/null | tr -d '\r\n')
-    [ -s "$LATENCY_FILE" ] || { printf '{"nodes":[]}\n'; return; }
-    JSON=$(awk -F '\t' -v active="$ACTIVE" 'BEGIN{printf "[";i=0}
-      NF>=2 {ms=$1; line=$0; sub(/^[^\t]*\t/,"",line); i++; is_active=(line==active?"true":"false");
-        n=split(line,a,"#"); lbl=(n>1)?a[n]:"Node"i; gsub(/"/,"",lbl);
-        h=line; sub(/vless:\/\/[^@]*@/,"",h); split(h,hp,":"); host=hp[1];
-        p=h; sub(/[^:]*:/,"",p); split(p,pp,"?"); port=pp[1]; raw=line;
-        gsub(/\\/,"\\\\",raw); gsub(/"/,"\\\"",raw);
-        if(i>1)printf ",";
-        printf "{\"idx\":%d,\"label\":\"%s\",\"country\":\"%s\",\"host\":\"%s\",\"port\":\"%s\",\"raw\":\"%s\",\"latency\":%s,\"active\":%s}",i,lbl,lbl,host,port,raw,(ms<999999?ms:"null"),is_active
-      } END{printf "]"}' "$LATENCY_FILE")
-    printf '{"nodes":%s}\n' "$JSON"
 }
 
 case "$ACTION" in
 status)
     PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
     [ -n "$PID" ] && R=true || R=false
-    INTERNET=$(health_value internet); DNS=$(health_value dns); TPROXY=$(health_value tproxy)
-    [ "$INTERNET" = 1 ] && INTERNET=true || INTERNET=false
-    [ "$DNS" = 1 ] && DNS=true || DNS=false
-    [ "$TPROXY" = 1 ] && TPROXY=true || TPROXY=false
-    LATENCY=$(health_value active_latency); [ "${LATENCY:-999999}" -lt 999999 ] 2>/dev/null || LATENCY=null
-    LAST_REFRESH=$(health_value last_refresh); LAST_CHECK=$(health_value last_check)
-    printf '{"running":%s,"pid":"%s","internet":%s,"dns":%s,"tproxy":%s,"latency":%s,"last_refresh":%s,"last_check":%s}\n' \
-        "$R" "${PID:-}" "$INTERNET" "$DNS" "$TPROXY" "$LATENCY" "${LAST_REFRESH:-0}" "${LAST_CHECK:-0}"
+    printf '{"running":%s,"pid":"%s"}\n' "$R" "${PID:-}"
     ;;
 
 log)
@@ -118,70 +78,86 @@ log)
     ;;
 
 start)
-    rm -f /tmp/24spark-paused
     /etc/init.d/sing-box start 2>/dev/null; sleep 1
     PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
     printf '{"ok":true,"pid":"%s"}\n' "${PID:-}"
     ;;
 
 stop)
-    touch /tmp/24spark-paused
     /etc/init.d/sing-box stop 2>/dev/null
     printf '{"ok":true}\n'
     ;;
 
 listsubs)
-    R=$({
-        grep -v '^[[:space:]]*$' "$SUBS_FILE" 2>/dev/null | awk '{print "subscription\t" $0}'
-        grep '^vless://' "$CUSTOM_FILE" 2>/dev/null | awk '{print "vless\t" $0}'
-    } | awk -F '\t' '{kind=$1; url=$0; sub(/^[^\t]*\t/,"",url); gsub(/\\/,"\\\\",url); gsub(/"/,"\\\"",url); printf "%s{\"url\":\"%s\",\"kind\":\"%s\"}",(NR>1?",":""),url,kind}')
-    printf '{"subs":[%s]}\n' "$R"
+    R=$(cat "$SUBS_FILE" 2>/dev/null | grep -v '^[[:space:]]*$' | \
+        awk '{gsub(/"/,"\\\""); printf "%s{\"type\":\"sub\",\"url\":\"%s\"}",(NR>1?",":""),$0}')
+    M=$(cat "$MANUAL_FILE" 2>/dev/null | grep '^vless://' | \
+        awk '{gsub(/"/,"\\\""); printf "%s{\"type\":\"node\",\"url\":\"%s\"}",(NR>1?",":""),$0}')
+    SEP=""
+    [ -n "$R" ] && [ -n "$M" ] && SEP=","
+    printf '{"subs":[%s%s%s]}\n' "$R" "$SEP" "$M"
     ;;
 
 addsub)
     RAW=$(echo "$QUERY" | sed "s/.*url=//;s/[& ].*//")
     URL=$(url_decode "$RAW")
     [ -z "$URL" ] && printf '{"ok":false,"error":"empty url"}\n' && exit
-    case "$URL" in
-        vless://*) TARGET=$CUSTOM_FILE ;;
-        http://*|https://*) TARGET=$SUBS_FILE ;;
-        *) printf '{"ok":false,"error":"use https:// or vless:// link"}\n'; exit ;;
-    esac
-    touch "$TARGET"; chmod 600 "$TARGET"
-    if grep -qxF "$URL" "$TARGET"; then
+    touch "$SUBS_FILE"
+    if grep -qF "$URL" "$SUBS_FILE"; then
         printf '{"ok":false,"error":"already exists"}\n'; exit
     fi
-    printf '%s\n' "$URL" >> "$TARGET"
-    [ "$TARGET" = "$CUSTOM_FILE" ] && KIND=vless || KIND=subscription
-    printf '{"ok":true,"kind":"%s"}\n' "$KIND"
+    printf '%s\n' "$URL" >> "$SUBS_FILE"
+    printf '{"ok":true}\n'
     ;;
 
 delsub)
     RAW=$(echo "$QUERY" | sed "s/.*url=//;s/[& ].*//")
     URL=$(url_decode "$RAW")
     [ -z "$URL" ] && printf '{"ok":false,"error":"empty url"}\n' && exit
-    for FILE in "$SUBS_FILE" "$CUSTOM_FILE"; do
-        [ -e "$FILE" ] || continue
-        grep -vxF "$URL" "$FILE" > "$FILE.new.$$" || true
-        mv "$FILE.new.$$" "$FILE"
-        chmod 600 "$FILE"
-    done
+    SAFE=$(printf '%s' "$URL" | sed 's|[\\&]|\\&|g;s|/|\\/|g')
+    sed -i "\\|^${SAFE}$|d" "$SUBS_FILE" 2>/dev/null
+    printf '{"ok":true}\n'
+    ;;
+
+addnode)
+    RAW=$(echo "$QUERY" | sed "s/.*url=//;s/[& ].*//")
+    URL=$(url_decode "$RAW")
+    [ -z "$URL" ] && printf '{"ok":false,"error":"empty url"}\n' && exit
+    case "$URL" in
+        vless://*) ;;
+        *) printf '{"ok":false,"error":"not a vless:// url"}\n'; exit ;;
+    esac
+    touch "$MANUAL_FILE"
+    if grep -qF "$URL" "$MANUAL_FILE"; then
+        printf '{"ok":false,"error":"already exists"}\n'; exit
+    fi
+    printf '%s\n' "$URL" >> "$MANUAL_FILE"
+    printf '{"ok":true}\n'
+    ;;
+
+delnode)
+    RAW=$(echo "$QUERY" | sed "s/.*url=//;s/[& ].*//")
+    URL=$(url_decode "$RAW")
+    [ -z "$URL" ] && printf '{"ok":false,"error":"empty url"}\n' && exit
+    SAFE=$(printf '%s' "$URL" | sed 's|[\\&]|\\&|g;s|/|\\/|g')
+    sed -i "\\|^${SAFE}$|d" "$MANUAL_FILE" 2>/dev/null
     printf '{"ok":true}\n'
     ;;
 
 nodes)
-    [ -s "$NODES_FILE" ] || "$MANAGER" refresh >/dev/null 2>&1
-    [ -s "$LATENCY_FILE" ] || "$MANAGER" benchmark >/dev/null 2>&1
-    render_nodes
-    ;;
-
-refreshnodes)
-    if "$MANAGER" refresh >/dev/null 2>&1; then
-        "$MANAGER" benchmark >/dev/null 2>&1
-        render_nodes
-    else
-        printf '{"nodes":[],"error":"subscription refresh failed"}\n'
+    ALL_FETCH=""
+    SUBS=$(cat "$SUBS_FILE" 2>/dev/null | grep -v '^[[:space:]]*$')
+    if [ -n "$SUBS" ]; then
+        ALL_FETCH=$(echo "$SUBS" | while IFS= read -r U; do
+            [ -z "$U" ] && continue
+            fetch_vless "$U"
+        done | grep '^vless://' | grep -v '@0\.0\.0\.0:')
     fi
+    MANUAL=$(cat "$MANUAL_FILE" 2>/dev/null | grep '^vless://' | grep -v '@0\.0\.0\.0:')
+    ALL=$(printf '%s\n%s' "$ALL_FETCH" "$MANUAL" | grep '^vless://')
+    [ -z "$ALL" ] && printf '{"nodes":[]}\n' && exit
+    JSON=$(printf '%s\n' "$ALL" | awk 'BEGIN{printf "[";i=0}{i++;line=$0;if(i>1)printf ",";n=split(line,a,"#");lbl=(n>1)?a[n]:"Node"i;gsub(/"/,"",lbl);h=line;sub(/vless:\/\/[^@]*@/,"",h);split(h,hp,":");host=hp[1];p=h;sub(/[^:]*:/,"",p);split(p,pp,"?");port=pp[1];raw=line;gsub(/"/,"\\\"",raw);printf "{\"idx\":%d,\"label\":\"%s\",\"host\":\"%s\",\"port\":\"%s\",\"raw\":\"%s\"}",i,lbl,host,port,raw}END{printf "]"}')
+    printf '{"nodes":%s}\n' "$JSON"
     ;;
 
 setnode)
@@ -189,40 +165,48 @@ setnode)
     [ -z "$RAW" ] && printf '{"ok":false,"error":"empty raw"}\n' && exit
     VLESS=$(url_decode "$RAW")
     [ -z "$VLESS" ] && printf '{"ok":false,"error":"empty vless"}\n' && exit
-    rm -f /tmp/24spark-paused
-    "$MANAGER" apply "$VLESS"
-    RC=$?
-    PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
-    if [ "$RC" = 0 ] && [ -n "$PID" ]; then
-        printf '{"ok":true,"pid":"%s"}\n' "$PID"
-    else
-        ERR=$(tail -1 /tmp/24spark-config-error 2>/dev/null | sed 's/"/\\"/g')
-        [ -n "$ERR" ] || ERR=$(logread 2>/dev/null | grep -i 'sing-box' | tail -1 | sed 's/"/\\"/g')
-        printf '{"ok":false,"error":"%s"}\n' "${ERR:-sing-box failed to start}"
+    /etc/sing-box/parse_vless.sh "$VLESS" > "$CFG" 2>/tmp/pvls_err
+    if [ $? -ne 0 ]; then
+        ERR=$(sed 's/"/\\"/g' /tmp/pvls_err 2>/dev/null | head -1)
+        printf '{"ok":false,"error":"%s"}\n' "$ERR"; exit
     fi
+    /etc/init.d/sing-box restart 2>/dev/null; sleep 2
+    PID=$(ps 2>/dev/null | grep "sing-box" | grep -v grep | awk '{print $1}' | head -1)
+    printf '{"ok":true,"pid":"%s"}\n' "${PID:-}"
     ;;
 
-update)
-    if [ "$(cat /tmp/24spark-update.state 2>/dev/null)" = running ]; then
-        printf '{"ok":false,"error":"update already running"}\n'; exit
+listroutes)
+    R=$(cat "$ROUTES_FILE" 2>/dev/null | grep -v '^[[:space:]]*$' | awk -F'|' '{
+        lbl=$1; cidr=$2
+        gsub(/"/,"\\\"",lbl); gsub(/"/,"\\\"",cidr)
+        printf "%s{\"label\":\"%s\",\"cidr\":\"%s\"}",(NR>1?",":""),lbl,cidr
+    }')
+    printf '{"routes":[%s]}\n' "$R"
+    ;;
+
+addroute)
+    RAWL=$(echo "$QUERY" | sed "s/.*label=//;s/[&].*//")
+    RAWC=$(echo "$QUERY" | sed "s/.*cidr=//;s/[& ].*//")
+    LBL=$(url_decode "$RAWL")
+    CIDR=$(url_decode "$RAWC")
+    [ -z "$LBL" ] || [ -z "$CIDR" ] && printf '{"ok":false,"error":"empty label or cidr"}\n' && exit
+    touch "$ROUTES_FILE"
+    if grep -qF "$CIDR" "$ROUTES_FILE"; then
+        printf '{"ok":false,"error":"already exists"}\n'; exit
     fi
-    echo running > /tmp/24spark-update.state
-    (
-        if curl -fL --connect-timeout 30 --max-time 300 \
-            -o /tmp/24spark-install.sh \
-            https://raw.githubusercontent.com/arankarrr/24spark/main/install.sh && \
-           sh /tmp/24spark-install.sh; then
-            echo success > /tmp/24spark-update.state
-        else
-            echo error > /tmp/24spark-update.state
-        fi
-    ) >/tmp/24spark-update.log 2>&1 </dev/null &
+    printf '%s|%s\n' "$LBL" "$CIDR" >> "$ROUTES_FILE"
+    nft add element inet sing_box custom_direct "{ $CIDR }" 2>/dev/null || true
     printf '{"ok":true}\n'
     ;;
 
-updatestatus)
-    STATE=$(cat /tmp/24spark-update.state 2>/dev/null); [ -n "$STATE" ] || STATE=idle
-    printf '{"state":"%s"}\n' "$STATE"
+delroute)
+    RAWC=$(echo "$QUERY" | sed "s/.*cidr=//;s/[& ].*//")
+    CIDR=$(url_decode "$RAWC")
+    [ -z "$CIDR" ] && printf '{"ok":false,"error":"empty cidr"}\n' && exit
+    SAFE=$(printf '%s' "$CIDR" | sed 's|[\\&/]|\\&|g')
+    sed -i "/|${SAFE}$/d" "$ROUTES_FILE" 2>/dev/null
+    nft delete element inet sing_box custom_direct "{ $CIDR }" 2>/dev/null || true
+    printf '{"ok":true}\n'
     ;;
 
 *)  printf '{"error":"unknown: %s"}\n' "$ACTION" ;;
