@@ -55,8 +55,11 @@ FP=$(url_decode "$(param fp)")
 PBK=$(url_decode "$(param pbk)")
 SID=$(url_decode "$(param sid)")
 FLOW=$(url_decode "$(param flow)")
+TYPE=$(url_decode "$(param type)")
+SVC=$(url_decode "$(param serviceName)")
 [ -n "$SNI" ] || SNI=$HOST
 [ -n "$FP" ] || FP=chrome
+[ -n "$TYPE" ] || TYPE=tcp
 
 HOST=$(json_escape "$HOST")
 UUID=$(json_escape "$UUID")
@@ -65,9 +68,14 @@ FP=$(json_escape "$FP")
 PBK=$(json_escape "$PBK")
 SID=$(json_escape "$SID")
 FLOW=$(json_escape "$FLOW")
+SVC=$(json_escape "$SVC")
 
 FLOW_LINE=""
 [ -n "$FLOW" ] && FLOW_LINE="\"flow\": \"$FLOW\","
+
+TRANSPORT_BLOCK=""
+[ "$TYPE" = "grpc" ] && TRANSPORT_BLOCK=",
+     \"transport\": {\"type\": \"grpc\", \"service_name\": \"${SVC:-grpc}\"}"
 
 cat <<EOF
 {
@@ -91,7 +99,7 @@ cat <<EOF
      "uuid": "$UUID", $FLOW_LINE
      "tls": {"enabled": true, "server_name": "$SNI",
        "utls": {"enabled": true, "fingerprint": "$FP"},
-       "reality": {"enabled": true, "public_key": "$PBK", "short_id": "$SID"}}},
+       "reality": {"enabled": true, "public_key": "$PBK", "short_id": "$SID"}}$TRANSPORT_BLOCK},
     {"type": "direct", "tag": "direct"},
     {"type": "block", "tag": "block"}
   ],

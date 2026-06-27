@@ -43,6 +43,38 @@ fetch_vless() {
         DEC=$(printf '%s' "$RAW" | base64 -d 2>/dev/null)
         if echo "$DEC" | grep -q '^vless://'; then echo "$DEC" | grep '^vless://'; return; fi
         if echo "$RAW" | grep -q '^vless://'; then echo "$RAW" | grep '^vless://'; return; fi
+        # Array of Xray configs (g.ultm.in / ultm style): [{"dns":...,"remarks":"..."},...]
+        if echo "$RAW" | grep -q '"remarks":' && echo "$RAW" | grep -q '"vnext":'; then
+            echo "$RAW" | tr -d '\n' | \
+            sed 's/^\[//;s/\]$//;s/},{"dns":/}\n{"dns":/g' | \
+            while IFS= read -r NODE; do
+                [ -z "$NODE" ] && continue
+                HOST=$(echo "$NODE" | grep -o '"address":"[^"]*"' | head -1 | sed 's/"address":"//;s/"//')
+                PORT=$(echo "$NODE" | grep -o '"port":[0-9]*' | head -1 | sed 's/"port"://')
+                UUID=$(echo "$NODE" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
+                NET=$(echo "$NODE" | grep -o '"network":"[^"]*"' | head -1 | sed 's/"network":"//;s/"//')
+                SNI=$(echo "$NODE" | grep -o '"serverName":"[^"]*"' | head -1 | sed 's/"serverName":"//;s/"//')
+                PBK=$(echo "$NODE" | grep -o '"publicKey":"[^"]*"' | head -1 | sed 's/"publicKey":"//;s/"//')
+                SID=$(echo "$NODE" | grep -o '"shortId":"[^"]*"' | head -1 | sed 's/"shortId":"//;s/"//')
+                FP=$(echo "$NODE" | grep -o '"fingerprint":"[^"]*"' | head -1 | sed 's/"fingerprint":"//;s/"//')
+                SVC=$(echo "$NODE" | grep -o '"serviceName":"[^"]*"' | head -1 | sed 's/"serviceName":"//;s/"//')
+                FLOW=$(echo "$NODE" | grep -o '"flow":"[^"]*"' | grep -v '""' | head -1 | sed 's/"flow":"//;s/"//')
+                LBL=$(echo "$NODE" | sed 's/.*"remarks":"//;s/".*//')
+                [ -z "$HOST" ] || [ -z "$PORT" ] || [ -z "$UUID" ] && continue
+                [ -z "$NET" ] && NET=tcp
+                [ -z "$FP" ] && FP=chrome
+                F=$([ -n "$FLOW" ] && printf '&flow=%s' "$FLOW" || printf '')
+                if [ "$NET" = "grpc" ]; then
+                    printf 'vless://%s@%s:%s?type=grpc&serviceName=%s&security=reality&pbk=%s&fp=%s&sni=%s&sid=%s#%s\n' \
+                        "$UUID" "$HOST" "$PORT" "$SVC" "$PBK" "$FP" "$SNI" "$SID" "$LBL"
+                else
+                    printf 'vless://%s@%s:%s?type=tcp&security=reality&pbk=%s&fp=%s&sni=%s&sid=%s%s#%s\n' \
+                        "$UUID" "$HOST" "$PORT" "$PBK" "$FP" "$SNI" "$SID" "$F" "$LBL"
+                fi
+            done
+            return
+        fi
+        # Single Xray config format (Happ/1.0 style)
         if echo "$RAW" | grep -q '"protocol":"vless"'; then
             echo "$RAW" | awk '
             /"protocol":"vless"/{found=1;host="";port="";uuid="";flow="";fp="";sni="";pbk="";sid=""}
